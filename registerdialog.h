@@ -22,6 +22,8 @@ private slots:
 
 private:
     Ui::RegisterDialog *ui;
+    void initHttpHandlers();
+    QMap<ReqId, std::function<void(const QJsonObject&)>> _handlers; // 请求ID到处理函数的映射
 };
 
 #endif // REGISTERDIALOG_H

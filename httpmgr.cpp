@@ -20,6 +20,7 @@ void HttpMgr::PostHttpReq(QUrl url, QJsonObject json, ReqId req_id, Modules modu
     request.setHeader(QNetworkRequest::ContentLengthHeader, QByteArray::number(data.size())); // 设置请求体长度
     QNetworkReply *reply = _manager.post(request, data); // 发送POST请求
 
+    // 使用lambda表达式连接网络回复的finished信号，处理HTTP响应
     auto self = shared_from_this();
     QObject::connect(reply, &QNetworkReply::finished, [self, reply, req_id, module]() {
         // 处理HTTP响应
