@@ -2,6 +2,9 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include "logindialog.h"
+#include "qstackedwidget.h"
+#include "registerdialog.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -19,5 +22,8 @@ public:
 
 private:
     Ui::MainWindow *ui;
+    QStackedWidget *_stackedWidget;
+    LoginDialog *_loginDialog;
+    RegisterDialog *_registerDialog;
 };
 #endif // MAINWINDOW_H
