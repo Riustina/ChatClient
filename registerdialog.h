@@ -2,6 +2,7 @@
 #define REGISTERDIALOG_H
 
 #include <QDialog>
+#include "global.h"
 
 namespace Ui {
 class RegisterDialog;
@@ -17,6 +18,7 @@ public:
 
 private slots:
     void on_sendCodeButton_clicked();
+    void slot_reg_mod_http_finished(ReqId id, QString res, ErrorCodes err);
 
 private:
     Ui::RegisterDialog *ui;
