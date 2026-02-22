@@ -118,7 +118,7 @@
      <item>
       <widget class="QPushButton" name="cancelButton">
        <property name="text">
-        <string>PushButton</string>
+        <string>返回</string>
        </property>
       </widget>
      </item>
@@ -138,7 +138,7 @@
      <item>
       <widget class="QPushButton" name="registerButton">
        <property name="text">
-        <string>PushButton</string>
+        <string>注册</string>
        </property>
       </widget>
      </item>

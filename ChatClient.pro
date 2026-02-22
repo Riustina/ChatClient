@@ -15,6 +15,7 @@ SOURCES += \
     registerdialog.cpp
 
 HEADERS += \
+    Singleton.h \
     logindialog.h \
     mainwindow.h \
     registerdialog.h
