@@ -2,6 +2,7 @@
 #include "ui_registerdialog.h"
 #include <QRegularExpression>
 #include <QMessageBox>
+#include <QJsonObject>
 #include "httpmgr.h"
 
 RegisterDialog::RegisterDialog(QWidget *parent)
@@ -44,10 +45,12 @@ void RegisterDialog::on_sendCodeButton_clicked()
         QMessageBox::warning(this, "错误", "邮箱格式不正确");
         return;
     }
-    // else {
-        // 发送验证码
-        // QMessageBox::information(this, "成功", "验证码已发送到您的邮箱");
-    // }
+    QJsonObject jsonObj;
+    jsonObj["email"] = email;
+    HttpMgr::getInstance().PostHttpReq(QUrl(gate_url_prefix + "/get_verifycode"), jsonObj, ReqId::ID_GET_VERIFY_CODE, Modules::REGISTERMOD);
+
+    QMessageBox::information(this, "成功", "验证码已发送到您的邮箱");
+
 }
 
 void RegisterDialog::slot_reg_mod_http_finished(ReqId id, QString res, ErrorCodes err)

@@ -21,15 +21,15 @@ void HttpMgr::PostHttpReq(QUrl url, QJsonObject json, ReqId req_id, Modules modu
     QNetworkReply *reply = _manager.post(request, data); // 发送POST请求
 
     // 使用lambda表达式连接网络回复的finished信号，处理HTTP响应
-    auto self = shared_from_this();
-    QObject::connect(reply, &QNetworkReply::finished, [self, reply, req_id, module]() {
+    // auto self = shared_from_this(); // 静态单例模式下不需要使用shared_from_this
+    QObject::connect(reply, &QNetworkReply::finished, [this, reply, req_id, module]() {
         // 处理HTTP响应
         if (reply->error() == QNetworkReply::NoError) {
             QString response = reply->readAll(); // 读取响应数据
-            emit self->sig_http_finished(req_id, response, ErrorCodes::SUCCESS, module); // 发出信号，通知请求完成和回包数据
+            emit this->sig_http_finished(req_id, response, ErrorCodes::SUCCESS, module); // 发出信号，通知请求完成和回包数据
         } else {
             qDebug() << "[HttpMgr.cpp] 函数 [PostHttpReq] HTTP request failed: " << reply->errorString(); // 输出错误信息
-            emit self->sig_http_finished(req_id, "", ErrorCodes::ERR_NETWORK, module); // 发出信号，通知请求失败
+            emit this->sig_http_finished(req_id, "", ErrorCodes::ERR_NETWORK, module); // 发出信号，通知请求失败
         }
         reply->deleteLater(); // 释放网络回复对象
     });

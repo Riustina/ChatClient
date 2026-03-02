@@ -1,5 +1,6 @@
 #ifndef GLOBAL_H
 #define GLOBAL_H
+#include <QString>
 
 enum ReqId {
     ID_GET_VERIFY_CODE = 1001,  // 获取验证码
@@ -15,5 +16,7 @@ enum ErrorCodes {
     ERR_JSON = 1,               // JSON 解析失败
     ERR_NETWORK = 2,            // 网络错误
 };
+
+extern QString gate_url_prefix;
 
 #endif // GLOBAL_H

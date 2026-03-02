@@ -15,12 +15,12 @@ class HttpMgr : public QObject,
     Q_OBJECT
 public:
     ~HttpMgr();
+    void PostHttpReq(QUrl url, QJsonObject json, ReqId req_id, Modules module);
 
 private:
     friend class Singleton<HttpMgr>;
     HttpMgr();
 
-    void PostHttpReq(QUrl url, QJsonObject json, ReqId req_id, Modules module);
 
     QNetworkAccessManager _manager;
 
