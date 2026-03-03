@@ -4,12 +4,12 @@
 #include <QNetworkReply>    // 用于处理网络回复
 
 HttpMgr::HttpMgr() {
-
+    connect(this, &HttpMgr::sig_http_finished, this, &HttpMgr::slot_http_finished); // 连接信号和槽
 }
 
 HttpMgr::~HttpMgr()
 {
-    connect(this, &HttpMgr::sig_http_finished, this, &HttpMgr::slot_http_finished); // 连接信号和槽
+
 }
 
 void HttpMgr::PostHttpReq(QUrl url, QJsonObject json, ReqId req_id, Modules module)

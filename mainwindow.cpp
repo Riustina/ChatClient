@@ -20,6 +20,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(_loginDialog, &LoginDialog::switchRegister, this, [this]() {
         _stackedWidget->setCurrentWidget(_registerDialog);
     });
+    connect(_registerDialog, &RegisterDialog::switchToLogin, this, [this]() {
+        _stackedWidget->setCurrentWidget(_loginDialog);
+    });
 
 }
 

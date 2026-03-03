@@ -34,6 +34,19 @@ void RegisterDialog::initHttpHandlers()
         auto email = jsonObj.value("email").toString();
         QMessageBox::information(this, "成功", "验证码已发送到 " + email);
     };
+
+    // 注册用户注册回包的逻辑
+    _handlers[ReqId::ID_REG_USER] = [this](const QJsonObject& jsonObj) {
+        int error = jsonObj.value("error").toInt();
+        if (error != ErrorCodes::SUCCESS) {
+            qDebug() << "[RegisterDialog.cpp] 函数 [initHttpHandlers] 注册失败: " << jsonObj;
+            QMessageBox::warning(this, "注册失败", "注册失败，请重试");
+            return;
+        }
+
+        QMessageBox::information(this, "成功", "注册成功，请登录");
+        emit switchToLogin(); // 注册成功后切换回登录界面
+    };
 }
 
 void RegisterDialog::on_sendCodeButton_clicked()
@@ -48,9 +61,6 @@ void RegisterDialog::on_sendCodeButton_clicked()
     QJsonObject jsonObj;
     jsonObj["email"] = email;
     HttpMgr::getInstance().PostHttpReq(QUrl(gate_url_prefix + "/get_verifycode"), jsonObj, ReqId::ID_GET_VERIFY_CODE, Modules::REGISTERMOD);
-
-    QMessageBox::information(this, "成功", "验证码已发送到您的邮箱");
-
 }
 
 void RegisterDialog::slot_reg_mod_http_finished(ReqId id, QString res, ErrorCodes err)
@@ -76,3 +86,41 @@ void RegisterDialog::slot_reg_mod_http_finished(ReqId id, QString res, ErrorCode
     // 根据请求 ID 调用对应的处理函数
     _handlers[id](jsonDoc.object());
 }
+
+void RegisterDialog::on_cancelButton_clicked()
+{
+    emit switchToLogin();
+}
+
+
+void RegisterDialog::on_registerButton_clicked()
+{
+    // 获取输入
+    QString username = ui->userLineEdit->text().trimmed();
+    QString email = ui->emailLineEdit->text().trimmed();
+    QString verifyCode = ui->codeLineEdit->text().trimmed();
+    QString password = ui->pswdLineEdit->text();
+
+    // 快速非空检查
+    if (username.isEmpty() || email.isEmpty() ||
+        verifyCode.isEmpty() || password.isEmpty()) {
+        QMessageBox::warning(this, "注册失败", "请填写所有必填项！");
+        return;
+    }
+
+    // 构建JSON
+    QJsonObject json_obj;
+    json_obj["user"] = username;
+    json_obj["email"] = email;
+    json_obj["verifycode"] = verifyCode;
+    json_obj["passwd"] = password;
+
+    // 发送请求
+    HttpMgr::getInstance().PostHttpReq(
+        QUrl(gate_url_prefix + "/user_register"),
+        json_obj,
+        ReqId::ID_REG_USER,
+        Modules::REGISTERMOD
+        );
+}
+
