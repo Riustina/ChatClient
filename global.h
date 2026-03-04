@@ -13,6 +13,7 @@ enum ReqId {
 
 enum Modules {
     REGISTERMOD = 0,
+    RESETMOD = 1,
 };
 
 enum ErrorCodes {
