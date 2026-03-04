@@ -28,6 +28,7 @@ void RegisterDialog::initHttpHandlers()
         int error = jsonObj.value("error").toInt();
         if (error != ErrorCodes::SUCCESS) {
             qDebug() << "[RegisterDialog.cpp] 函数 [initHttpHandlers] 获取验证码失败: " << jsonObj;
+            QMessageBox::warning(this, "错误", "获取验证码失败，请重试");
             return;
         }
 

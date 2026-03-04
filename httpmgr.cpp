@@ -45,5 +45,9 @@ void HttpMgr::slot_http_finished(ReqId req_id, QString response, ErrorCodes err,
     if (module == Modules::RESETMOD) {
         emit sig_reset_mod_http_finished(req_id, response, err);
     }
+
+    if (module == Modules::LOGINMOD) {
+        emit sig_login_mod_http_finished(req_id, response, err);
+    }
 }
 

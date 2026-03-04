@@ -109,12 +109,12 @@
           </size>
          </property>
          <property name="text">
-          <string>用户：</string>
+          <string>邮箱：</string>
          </property>
         </widget>
        </item>
        <item>
-        <widget class="QLineEdit" name="userLineEdit">
+        <widget class="QLineEdit" name="emailLineEdit">
          <property name="minimumSize">
           <size>
            <width>0</width>
