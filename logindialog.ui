@@ -172,7 +172,7 @@
         </widget>
        </item>
        <item>
-        <widget class="QPushButton" name="pushButton">
+        <widget class="QPushButton" name="forgetBtn">
          <property name="text">
           <string>忘记密码</string>
          </property>

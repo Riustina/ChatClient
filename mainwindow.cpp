@@ -12,8 +12,10 @@ MainWindow::MainWindow(QWidget *parent)
 
     _loginDialog = new LoginDialog(this);
     _registerDialog = new RegisterDialog(this);
+    _resetDialog = new ResetDialog(this);
     _stackedWidget->addWidget(_loginDialog);
     _stackedWidget->addWidget(_registerDialog);
+    _stackedWidget->addWidget(_resetDialog);
     _stackedWidget->setCurrentWidget(_loginDialog);
 
     // 绑定信号和槽
@@ -24,6 +26,12 @@ MainWindow::MainWindow(QWidget *parent)
         _stackedWidget->setCurrentWidget(_loginDialog);
     });
 
+    connect(_loginDialog, &LoginDialog::switchReset, this, [this]() {
+        _stackedWidget->setCurrentWidget(_resetDialog);
+    });
+    connect(_resetDialog, &ResetDialog::switchToLogin, this, [this]() {
+        _stackedWidget->setCurrentWidget(_loginDialog);
+    });
 }
 
 MainWindow::~MainWindow()

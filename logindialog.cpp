@@ -11,6 +11,9 @@ LoginDialog::LoginDialog(QWidget *parent)
     connect(ui->regButton, &QPushButton::clicked, this, [this]() {
         emit switchRegister(); // 发出切换到注册界面的信号
     });
+    connect(ui->forgetBtn, &QPushButton::clicked, this, [this]() {
+        emit switchReset();
+    });
 }
 
 LoginDialog::~LoginDialog()

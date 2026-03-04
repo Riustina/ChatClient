@@ -5,6 +5,7 @@
 #include "logindialog.h"
 #include "qstackedwidget.h"
 #include "registerdialog.h"
+#include "resetdialog.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -25,5 +26,6 @@ private:
     QStackedWidget *_stackedWidget;
     LoginDialog *_loginDialog;
     RegisterDialog *_registerDialog;
+    ResetDialog *_resetDialog;
 };
 #endif // MAINWINDOW_H

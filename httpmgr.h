@@ -30,6 +30,7 @@ private slots:
 signals:
     void sig_http_finished(ReqId id, QString res, ErrorCodes err, Modules module);
     void sig_reg_mod_http_finished(ReqId id, QString res, ErrorCodes err);
+    void sig_reset_mod_http_finished(ReqId id, QString res, ErrorCodes err);
 };
 
 #endif // HTTPMGR_H

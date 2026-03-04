@@ -20,6 +20,7 @@ private:
 
 signals:
     void switchRegister(); // 切换到注册界面的信号
+    void switchReset();    // 切换到重置界面的信号
 };
 
 #endif // LOGINDIALOG_H
