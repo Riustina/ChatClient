@@ -28,6 +28,9 @@ signals:
     void sig_con_success(bool bSuccess);
     // 外部调用这个信号来触发发送，TcpMgr 内部把它连到 slot_send_data
     void sig_send_data(ReqId reqId, QString data);
+    void sig_login_failed(int err);
+    void sig_switch_chatdlg();
+
 
 private:
     explicit TcpMgr();
@@ -44,6 +47,9 @@ private:
     bool        _b_recv_pending; // 正在等待包体剩余数据
     quint16     _message_id;
     quint16     _message_len;
+
+    using MsgHandler = std::function<void(ReqId, int, QByteArray)>;
+    QHash<ReqId, MsgHandler> _handlers;   // QHash O(1) 查找
 };
 
 #endif // TCPMGR_H

@@ -32,6 +32,7 @@ private slots:
     void on_loginBtn_clicked();
     void slot_login_mod_http_finished(ReqId id, QString res, ErrorCodes err);
     void slot_tcp_con_finish(bool bsuccess);
+    void slot_login_failed(int err);
 };
 
 #endif // LOGINDIALOG_H

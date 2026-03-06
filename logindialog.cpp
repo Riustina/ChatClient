@@ -26,6 +26,8 @@ LoginDialog::LoginDialog(QWidget *parent)
     connect(this, &LoginDialog::sig_connect_tcp, &TcpMgr::getInstance(), &TcpMgr::slot_tcp_connect);
     //连接tcp管理者发出的连接成功信号
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_con_success, this, &LoginDialog::slot_tcp_con_finish);
+    //连接tcp管理者发出的登陆失败信号
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_login_failed, this, &LoginDialog::slot_login_failed);
 }
 
 LoginDialog::~LoginDialog()
@@ -93,7 +95,7 @@ void LoginDialog::initHttpHandlers() {
         qDebug()<< "user is " << user << " uid is " << si.Uid <<" host is "
                  << si.Host << " Port is " << si.Port << " Token is " << si.Token;
         emit sig_connect_tcp(si);
-        QMessageBox::information(this, "成功", "登录成功");
+        // QMessageBox::information(this, "成功", "登录成功");
     };
 }
 
@@ -110,10 +112,14 @@ void LoginDialog::slot_tcp_con_finish(bool bsuccess)
         QString jsonString = doc.toJson(QJsonDocument::Indented);
 
         //发送tcp请求给chat server
-        TcpMgr::getInstance().sig_send_data(ReqId::ID_CHAT_LOGIN, jsonString);
+        emit TcpMgr::getInstance().sig_send_data(ReqId::ID_CHAT_LOGIN, jsonString);
 
     }else{
         QMessageBox::warning(this, "错误", "TCP长链接请求失败，请重试");
     }
+}
 
+void LoginDialog::slot_login_failed(int err)
+{
+    QMessageBox::warning(this, "登录失败", "登录失败，错误码: " + QString::number(err));
 }

@@ -1,8 +1,11 @@
 // TcpMgr.cpp
 
 #include "TcpMgr.h"
+#include "UserMgr.h"
 #include <QDataStream>
 #include <QDebug>
+#include <QJsonDocument>
+#include <QJsonObject>
 
 TcpMgr::TcpMgr()
     : _host("")
@@ -91,6 +94,51 @@ TcpMgr::TcpMgr()
     // ── 自身 sig_send_data → slot_send_data ───────
     // 保证跨线程调用发送时也能回到 TcpMgr 所在线程执行
     connect(this, &TcpMgr::sig_send_data, this, &TcpMgr::slot_send_data);
+    initHandlers();
+}
+
+void TcpMgr::initHandlers()
+{
+    // 处理登录回包 ID_CHAT_LOGIN_RSP
+    _handlers[ID_CHAT_LOGIN_RSP] = [this](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        qDebug() << "[TcpMgr] initHandlers 收到登录回包，id:" << id;
+
+        // 1. 解析 JSON
+        QJsonDocument jsonDoc = QJsonDocument::fromJson(data);
+        if (jsonDoc.isNull() || !jsonDoc.isObject()) {
+            qDebug() << "[TcpMgr] initHandlers JSON 解析失败";
+            emit sig_login_failed(ErrorCodes::ERR_JSON);
+            return;
+        }
+
+        QJsonObject jsonObj = jsonDoc.object();
+
+        // 2. 检查 error 字段
+        if (!jsonObj.contains("error")) {
+            qDebug() << "[TcpMgr] initHandlers 回包缺少 error 字段";
+            emit sig_login_failed(ErrorCodes::ERR_JSON);
+            return;
+        }
+
+        int err = jsonObj["error"].toInt();
+        if (err != ErrorCodes::SUCCESS) {
+            qDebug() << "[TcpMgr] initHandlers 登录失败，error:" << err;
+            emit sig_login_failed(err);
+            return;
+        }
+
+        // 3. 写入 UserMgr
+        auto& userMgr = UserMgr::getInstance();
+        userMgr.SetUid(jsonObj["uid"].toInt());
+        userMgr.SetName(jsonObj["name"].toString());
+        userMgr.SetToken(jsonObj["token"].toString());
+
+        qDebug() << "[TcpMgr] initHandlers 登录成功，uid:" << userMgr.GetUid()
+                 << "name:" << userMgr.GetName();
+
+        emit sig_switch_chatdlg(); // 切换到聊天界面
+    };
 }
 
 // ─────────────────────────────────────────────
@@ -135,8 +183,11 @@ void TcpMgr::slot_send_data(ReqId reqId, QString data)
 // ─────────────────────────────────────────────
 void TcpMgr::dispatchMsg(quint16 msgId, const QByteArray& body)
 {
-    // TODO: 后续改成 QMap<quint16, handler> 的形式统一派发
-    qDebug() << "[TcpMgr] dispatchMsg: msgId=" << msgId
-             << "  暂未注册 handler";
-    Q_UNUSED(body)
+    ReqId id = static_cast<ReqId>(msgId);
+    auto it = _handlers.find(id);
+    if (it == _handlers.end()) {
+        qDebug() << "[TcpMgr] dispatchMsg 未找到 msgId [" << msgId << "] 的处理函数";
+        return;
+    }
+    it.value()(id, body.size(), body);
 }
