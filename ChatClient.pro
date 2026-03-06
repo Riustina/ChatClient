@@ -15,7 +15,8 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     registerdialog.cpp \
-    resetdialog.cpp
+    resetdialog.cpp \
+    tcpmgr.cpp
 
 HEADERS += \
     Singleton.h \
@@ -24,7 +25,8 @@ HEADERS += \
     logindialog.h \
     mainwindow.h \
     registerdialog.h \
-    resetdialog.h
+    resetdialog.h \
+    tcpmgr.h
 
 FORMS += \
     logindialog.ui \

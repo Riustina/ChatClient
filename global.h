@@ -17,6 +17,13 @@ enum Modules {
     LOGINMOD = 2,
 };
 
+struct ServerInfo{
+    QString Host;
+    QString Port;
+    QString Token;
+    int Uid;
+};
+
 enum ErrorCodes {
     SUCCESS = 0,
     ERR_JSON = 1,               // JSON 解析失败

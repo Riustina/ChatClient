@@ -3,6 +3,7 @@
 #include <QMessageBox>
 #include <QJsonObject>
 #include "httpmgr.h"
+#include "TcpMgr.h"
 
 LoginDialog::LoginDialog(QWidget *parent)
     : QDialog(parent)
@@ -21,6 +22,10 @@ LoginDialog::LoginDialog(QWidget *parent)
     initHttpHandlers();
     connect(&HttpMgr::getInstance(), &HttpMgr::sig_login_mod_http_finished,
             this, &LoginDialog::slot_login_mod_http_finished);
+    //连接tcp连接请求的信号和槽函数
+    connect(this, &LoginDialog::sig_connect_tcp, &TcpMgr::getInstance(), &TcpMgr::slot_tcp_connect);
+    //连接tcp管理者发出的连接成功信号
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_con_success, this, &LoginDialog::slot_tcp_con_finish);
 }
 
 LoginDialog::~LoginDialog()
@@ -74,6 +79,41 @@ void LoginDialog::initHttpHandlers() {
             QMessageBox::warning(this, "登录失败", "用户名或密码错误，请重试");
             return;
         }
+        auto user = jsonObj["user"].toString();
+
+        //发送信号通知tcpMgr发送长链接
+        ServerInfo si;
+        si.Uid = jsonObj["uid"].toInt();
+        si.Host = jsonObj["host"].toString();
+        si.Port = jsonObj["port"].toString();
+        si.Token = jsonObj["token"].toString();
+
+        _uid = si.Uid;
+        _token = si.Token;
+        qDebug()<< "user is " << user << " uid is " << si.Uid <<" host is "
+                 << si.Host << " Port is " << si.Port << " Token is " << si.Token;
+        emit sig_connect_tcp(si);
         QMessageBox::information(this, "成功", "登录成功");
     };
+}
+
+
+void LoginDialog::slot_tcp_con_finish(bool bsuccess)
+{
+
+    if(bsuccess){
+        QJsonObject jsonObj;
+        jsonObj["uid"] = _uid;
+        jsonObj["token"] = _token;
+
+        QJsonDocument doc(jsonObj);
+        QString jsonString = doc.toJson(QJsonDocument::Indented);
+
+        //发送tcp请求给chat server
+        TcpMgr::getInstance().sig_send_data(ReqId::ID_CHAT_LOGIN, jsonString);
+
+    }else{
+        QMessageBox::warning(this, "错误", "TCP长链接请求失败，请重试");
+    }
+
 }
