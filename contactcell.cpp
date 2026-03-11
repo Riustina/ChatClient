@@ -58,7 +58,7 @@ ContactCell::ContactCell(QWidget *parent)
     textLayout->addWidget(_nameLabel);
     textLayout->addWidget(_messageLabel);
 
-    rootLayout->addWidget(_avatarLabel, 0, Qt::AlignTop);
+    rootLayout->addWidget(_avatarLabel, 0, Qt::AlignVCenter);
     rootLayout->addLayout(textLayout, 1);
     rootLayout->addWidget(_timeLabel, 0, Qt::AlignTop);
 
@@ -114,6 +114,7 @@ void ContactCell::leaveEvent(QEvent *event)
 void ContactCell::updateAvatar(const ContactItem &contact)
 {
     _avatarLabel->setPixmap(buildAvatarPixmap(contact.name, contact.avatarColor, _avatarLabel->size()));
+    _avatarLabel->setContentsMargins(0, 2, 0, 0);
 }
 
 void ContactCell::updateStyles()

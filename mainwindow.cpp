@@ -22,8 +22,8 @@ MainWindow::MainWindow(QWidget *parent)
     _stackedWidget->addWidget(_resetDialog);
     _stackedWidget->setCurrentWidget(_chatPage);
 
-    resize(1170, 810);
-    setMinimumSize(910, 630);
+    resize(1110, 770);
+    setMinimumSize(880, 610);
     setWindowTitle("Chat Client");
 
     // 绑定信号和槽

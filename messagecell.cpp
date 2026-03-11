@@ -1,5 +1,6 @@
 #include "messagecell.h"
 
+#include <QFontMetrics>
 #include <QLabel>
 #include <QPainter>
 #include <QPainterPath>
@@ -12,7 +13,7 @@ constexpr int kAvatarSize = 34;
 constexpr int kSideMargin = 8;
 constexpr int kBubblePaddingH = 14;
 constexpr int kBubblePaddingV = 8;
-constexpr int kBubbleMaxWidth = 1875;
+constexpr int kBubbleMaxWidth = 2250;
 
 QPixmap buildAvatarPixmap(const QString &name, const QColor &color, const QSize &size)
 {
@@ -52,18 +53,16 @@ QPixmap roundedPixmap(const QImage &image, const QSize &size)
 
 QSize textLayoutSize(const QString &text, int maxBubbleWidth)
 {
-    QTextDocument document;
     QFont font("Microsoft YaHei UI", 10);
     font.setStyleStrategy(QFont::PreferAntialias);
-    document.setDefaultFont(font);
-    document.setDocumentMargin(0);
-    document.setPlainText(text);
-    document.adjustSize();
-
-    const int idealTextWidth = qCeil(document.idealWidth());
-    const int textWidth = qMax(1, qMin(maxBubbleWidth - 2 * kBubblePaddingH, idealTextWidth));
-    document.setTextWidth(textWidth);
-    const int textHeight = qCeil(document.size().height());
+    const QFontMetrics metrics(font);
+    const int maxTextWidth = qMax(1, maxBubbleWidth - 2 * kBubblePaddingH);
+    const int singleLineWidth = qMax(1, metrics.horizontalAdvance(text));
+    const int textWidth = qMin(maxTextWidth, singleLineWidth);
+    const QRect wrappedRect = metrics.boundingRect(QRect(0, 0, textWidth, 100000),
+                                                   Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop,
+                                                   text);
+    const int textHeight = qMax(metrics.height(), wrappedRect.height());
     return QSize(textWidth, textHeight);
 }
 }

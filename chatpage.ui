@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1170</width>
-    <height>810</height>
+    <width>1110</width>
+    <height>770</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -33,13 +33,13 @@
     <widget class="QFrame" name="navFrame">
      <property name="minimumSize">
       <size>
-       <width>40</width>
+       <width>52</width>
        <height>0</height>
       </size>
      </property>
      <property name="maximumSize">
       <size>
-       <width>40</width>
+       <width>52</width>
        <height>16777215</height>
       </size>
      </property>
@@ -129,7 +129,7 @@
        <number>18</number>
       </property>
       <property name="rightMargin">
-       <number>18</number>
+       <number>0</number>
       </property>
       <property name="bottomMargin">
        <number>18</number>
@@ -259,30 +259,33 @@
             <property name="minimumSize">
              <size>
               <width>0</width>
-              <height>39</height>
+              <height>66</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
               <width>16777215</width>
-              <height>39</height>
+              <height>66</height>
              </size>
             </property>
             <property name="frameShape">
              <enum>QFrame::Shape::NoFrame</enum>
             </property>
             <layout class="QHBoxLayout" name="chatHeaderLayout">
+             <property name="spacing">
+              <number>8</number>
+             </property>
              <property name="leftMargin">
-              <number>24</number>
+              <number>16</number>
              </property>
              <property name="topMargin">
-              <number>18</number>
+              <number>4</number>
              </property>
              <property name="rightMargin">
-              <number>24</number>
+              <number>16</number>
              </property>
              <property name="bottomMargin">
-              <number>18</number>
+              <number>4</number>
              </property>
              <item>
               <widget class="QLabel" name="chatTitleLabel">
@@ -411,6 +414,9 @@
              </item>
              <item>
               <layout class="QHBoxLayout" name="composerButtonLayout">
+               <property name="spacing">
+                <number>8</number>
+               </property>
                <item>
                 <spacer name="composerButtonSpacer">
                  <property name="orientation">
@@ -418,7 +424,7 @@
                  </property>
                  <property name="sizeHint" stdset="0">
                   <size>
-                   <width>40</width>
+                   <width>20</width>
                    <height>20</height>
                   </size>
                  </property>
