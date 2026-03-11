@@ -44,7 +44,13 @@ ContactCell::ContactCell(QWidget *parent)
     rootLayout->setContentsMargins(10, 6, 10, 6);
     rootLayout->setSpacing(8);
 
+    setAttribute(Qt::WA_StyledBackground, true);
+    setAttribute(Qt::WA_Hover, true);
     _avatarLabel->setFixedSize(30, 30);
+    _avatarLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    _nameLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    _messageLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    _timeLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 
     auto *textLayout = new QVBoxLayout;
     textLayout->setContentsMargins(0, 0, 0, 0);
@@ -80,7 +86,7 @@ void ContactCell::setSelected(bool selected)
 
 int ContactCell::cellHeight()
 {
-    return 42;
+    return 61;
 }
 
 void ContactCell::mousePressEvent(QMouseEvent *event)
@@ -114,15 +120,12 @@ void ContactCell::updateStyles()
 {
     QString background = "transparent";
     if (_selected) {
-        background = "#CBCACF";
+        background = "#E1E0E5";
     } else if (_hovered) {
         background = "#EAE9EF";
     }
 
-    setStyleSheet(QString(
-        "ContactCell { background:%1; border:none; border-radius:12px; }"
-        "QLabel { background:transparent; border:none; }")
-        .arg(background));
+    setStyleSheet(QString("background:%1; border:none; border-radius:12px;").arg(background));
 
     QFont nameFont("Microsoft YaHei UI", 9, QFont::DemiBold);
     QFont textFont("Microsoft YaHei UI", 8);
@@ -131,7 +134,7 @@ void ContactCell::updateStyles()
     _nameLabel->setFont(nameFont);
     _messageLabel->setFont(textFont);
     _timeLabel->setFont(textFont);
-    _nameLabel->setStyleSheet("color:#18212f;");
-    _messageLabel->setStyleSheet("color:#6b7280;");
-    _timeLabel->setStyleSheet("color:#94a3b8;");
+    _nameLabel->setStyleSheet("color:#18212f; background:transparent;");
+    _messageLabel->setStyleSheet("color:#6b7280; background:transparent;");
+    _timeLabel->setStyleSheet("color:#94a3b8; background:transparent;");
 }

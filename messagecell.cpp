@@ -9,10 +9,10 @@
 
 namespace {
 constexpr int kAvatarSize = 34;
-constexpr int kSideMargin = 18;
+constexpr int kSideMargin = 8;
 constexpr int kBubblePaddingH = 14;
 constexpr int kBubblePaddingV = 8;
-constexpr int kBubbleMaxWidth = 750;
+constexpr int kBubbleMaxWidth = 1875;
 
 QPixmap buildAvatarPixmap(const QString &name, const QColor &color, const QSize &size)
 {

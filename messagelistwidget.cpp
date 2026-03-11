@@ -66,15 +66,15 @@ void MessageListWidget::recalculateLayout()
     _offsets.resize(_messages.size());
     _heights.resize(_messages.size());
 
-    int currentY = 12;
+    int currentY = 4;
     const int availableWidth = viewport()->width();
     for (int i = 0; i < _messages.size(); ++i) {
         _offsets[i] = currentY;
         _heights[i] = MessageCell::heightForMessage(_messages[i], availableWidth);
-        currentY += _heights[i] + 10;
+        currentY += _heights[i] + 4;
     }
 
-    _contentWidget->resize(availableWidth, qMax(currentY + 12, viewport()->height()));
+    _contentWidget->resize(availableWidth, qMax(currentY + 4, viewport()->height()));
 }
 
 void MessageListWidget::updateVisibleCells()

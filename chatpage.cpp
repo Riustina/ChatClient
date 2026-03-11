@@ -129,27 +129,36 @@ void ChatPage::setupUiExtensions()
     ui->friendRequestNavButton->setIconSize(QSize(18, 18));
     ui->chatNavButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     ui->friendRequestNavButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    ui->chatNavButton->setFixedSize(28, 28);
+    ui->friendRequestNavButton->setFixedSize(28, 28);
+    ui->navLayout->setAlignment(ui->chatNavButton, Qt::AlignHCenter);
+    ui->navLayout->setAlignment(ui->friendRequestNavButton, Qt::AlignHCenter);
     ui->composerFrame->setMinimumHeight(165);
     ui->composerFrame->setMaximumHeight(195);
 
     setStyleSheet(
         "ChatPage { background:#F4F3F9; }"
-        "QFrame#navFrame { background:#F4F3F9; }"
-        "QFrame#contactFrame { background:#F4F3F9; }"
+        "QFrame#navFrame { background:#F4F3F9; border-right:1px solid #dfdde7; }"
+        "QFrame#contactFrame { background:#F4F3F9; border-right:1px solid #dfdde7; }"
         "QFrame#rightFrame { background:#F4F3F9; }"
         "QFrame#chatHeaderFrame { background:#F4F3F9; border-bottom:1px solid #e4e2eb; }"
         "QFrame#composerFrame { background:#F4F3F9; border-top:1px solid #e4e2eb; }"
         "QFrame#searchFrame { background:#EAE9EF; border-radius:17px; }"
         "QLineEdit#searchLineEdit { background:transparent; border:none; padding-left:14px; font: 10pt 'Microsoft YaHei UI'; color:#1f2937; }"
         "QToolButton#addFriendButton { background:#E0DEE8; border:none; border-radius:17px; font: 11pt 'Microsoft YaHei UI'; color:#4b5563; }"
-        "QToolButton#chatNavButton, QToolButton#friendRequestNavButton { min-height:44px; border:none; border-radius:12px; color:#7b7a82; background:transparent; }"
+        "QToolButton#addFriendButton:pressed { background:#d1ced9; }"
+        "QToolButton#chatNavButton, QToolButton#friendRequestNavButton { min-width:28px; max-width:28px; min-height:28px; max-height:28px; padding:0px; border:none; border-radius:9px; color:#7b7a82; background:transparent; }"
+        "QToolButton#chatNavButton:hover:!checked, QToolButton#friendRequestNavButton:hover:!checked { background:#EAE9EF; color:#1f2937; }"
         "QToolButton#chatNavButton:checked, QToolButton#friendRequestNavButton:checked { background:#CBCACF; color:#1f2937; }"
         "QLabel#chatTitleLabel { font: 15pt 'Microsoft YaHei UI'; color:#111827; }"
         "QToolButton#headerActionButton1, QToolButton#headerActionButton2, QToolButton#headerActionButton3 { background:#EAE9EF; border:none; border-radius:14px; padding:8px 14px; color:#334155; font: 10pt 'Microsoft YaHei UI'; }"
+        "QToolButton#headerActionButton1:pressed, QToolButton#headerActionButton2:pressed, QToolButton#headerActionButton3:pressed { background:#d9d6df; padding-top:9px; padding-left:15px; }"
         "QPushButton#sendButton, QPushButton#mockReceiveButton { min-width:92px; min-height:38px; border:none; border-radius:19px; font: 10pt 'Microsoft YaHei UI'; }"
         "QPushButton#mockReceiveButton { background:#EAE9EF; color:#334155; }"
         "QPushButton#sendButton { background:#CBCACF; color:#111827; }"
-        "QTextEdit { background:#ffffff; border:1px solid #dfdde7; border-radius:18px; padding:12px; font: 10pt 'Microsoft YaHei UI'; }"
+        "QPushButton#mockReceiveButton:pressed { background:#d9d6df; padding-top:1px; }"
+        "QPushButton#sendButton:pressed { background:#b9b7be; padding-top:1px; }"
+        "QTextEdit { background:#F4F3F9; border:none; border-radius:18px; padding:12px; font: 10pt 'Microsoft YaHei UI'; }"
         "QLabel#friendRequestTitleLabel { font: 18pt 'Microsoft YaHei UI'; color:#111827; }"
         "QLabel#friendRequestHintLabel { font: 11pt 'Microsoft YaHei UI'; color:#64748b; }");
 
