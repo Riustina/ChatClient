@@ -10,13 +10,19 @@ MainWindow::MainWindow(QWidget *parent)
     _stackedWidget = new QStackedWidget(this);
     setCentralWidget(_stackedWidget);
 
+    _chatPage = new ChatPage(this);
     _loginDialog = new LoginDialog(this);
     _registerDialog = new RegisterDialog(this);
     _resetDialog = new ResetDialog(this);
+    _stackedWidget->addWidget(_chatPage);
     _stackedWidget->addWidget(_loginDialog);
     _stackedWidget->addWidget(_registerDialog);
     _stackedWidget->addWidget(_resetDialog);
-    _stackedWidget->setCurrentWidget(_loginDialog);
+    _stackedWidget->setCurrentWidget(_chatPage);
+
+    resize(1420, 920);
+    setMinimumSize(1180, 760);
+    setWindowTitle("Chat Client");
 
     // 绑定信号和槽
     connect(_loginDialog, &LoginDialog::switchRegister, this, [this]() {

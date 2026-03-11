@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include "chatpage.h"
 #include "logindialog.h"
 #include "qstackedwidget.h"
 #include "registerdialog.h"
@@ -24,6 +25,7 @@ public:
 private:
     Ui::MainWindow *ui;
     QStackedWidget *_stackedWidget;
+    ChatPage *_chatPage;
     LoginDialog *_loginDialog;
     RegisterDialog *_registerDialog;
     ResetDialog *_resetDialog;
