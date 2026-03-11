@@ -6,6 +6,7 @@
 
 class QLabel;
 class QMouseEvent;
+class QEnterEvent;
 
 class ContactCell : public QWidget
 {
@@ -24,6 +25,8 @@ signals:
 
 protected:
     void mousePressEvent(QMouseEvent *event) override;
+    void enterEvent(QEnterEvent *event) override;
+    void leaveEvent(QEvent *event) override;
 
 private:
     void updateAvatar(const ContactItem &contact);
@@ -34,6 +37,7 @@ private:
     QLabel *_messageLabel;
     QLabel *_timeLabel;
     bool _selected = false;
+    bool _hovered = false;
 };
 
 #endif // CONTACTCELL_H

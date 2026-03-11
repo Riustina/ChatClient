@@ -10,6 +10,7 @@
 #include <QLinearGradient>
 #include <QPainter>
 #include <QRandomGenerator>
+#include <algorithm>
 #include <QStyle>
 
 namespace {
@@ -59,6 +60,7 @@ ChatPage::ChatPage(QWidget *parent)
     setupUiExtensions();
     setupNavigation();
     setupMockData();
+    sortConversationsByLatest();
     refreshContactSummaries();
     syncContactList();
     bindConversation(0);
@@ -77,7 +79,7 @@ void ChatPage::onContactActivated(int index)
 void ChatPage::onSendClicked()
 {
     const QImage pastedImage = _chatInputEdit->takePastedImage();
-    const QString text = _chatInputEdit->toPlainText().trimmed();
+    const QString text = _chatInputEdit->plainTextForSend().trimmed();
     if (text.isEmpty() && pastedImage.isNull()) {
         return;
     }
@@ -90,7 +92,8 @@ void ChatPage::onSendClicked()
     }
 
     _chatInputEdit->clear();
-    _chatInputEdit->setPlaceholderText("Type a message here. Paste images is supported.");
+    _currentConversation = moveConversationToFront(_currentConversation);
+    _chatInputEdit->setPlaceholderText("输入消息，Enter 发送，Shift+Enter 换行。");
     refreshContactSummaries();
     syncContactList();
     bindConversation(_currentConversation);
@@ -99,6 +102,7 @@ void ChatPage::onSendClicked()
 void ChatPage::onMockReceiveClicked()
 {
     _conversations[_currentConversation].messages.push_back(createIncomingMockMessage());
+    _currentConversation = moveConversationToFront(_currentConversation);
     refreshContactSummaries();
     syncContactList();
     bindConversation(_currentConversation);
@@ -107,7 +111,7 @@ void ChatPage::onMockReceiveClicked()
 void ChatPage::onImagePasted()
 {
     if (_chatInputEdit->hasPendingImage()) {
-        _chatInputEdit->setPlaceholderText("Image pasted. Click Send to deliver it, or keep typing.");
+        _chatInputEdit->setPlaceholderText("已插入图片预览，可直接退格删除。");
     }
 }
 
@@ -119,38 +123,43 @@ void ChatPage::setupUiExtensions()
 
     ui->chatNavButton->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
     ui->friendRequestNavButton->setIcon(style()->standardIcon(QStyle::SP_DialogApplyButton));
-    ui->chatNavButton->setIconSize(QSize(24, 24));
-    ui->friendRequestNavButton->setIconSize(QSize(24, 24));
+    ui->navFrame->setFixedWidth(40);
+    ui->contactFrame->setFixedWidth(255);
+    ui->chatNavButton->setIconSize(QSize(18, 18));
+    ui->friendRequestNavButton->setIconSize(QSize(18, 18));
     ui->chatNavButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     ui->friendRequestNavButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
+    ui->composerFrame->setMinimumHeight(165);
+    ui->composerFrame->setMaximumHeight(195);
 
     setStyleSheet(
-        "ChatPage { background:#f3f6fb; }"
-        "QFrame#navFrame { background:#111827; }"
-        "QFrame#contactFrame { background:#fbfdff; border-right:1px solid #e5e7eb; }"
-        "QFrame#rightFrame { background:#eef3f9; }"
-        "QFrame#chatHeaderFrame { background:#f8fbff; border-bottom:1px solid #dde6f1; }"
-        "QFrame#composerFrame { background:#f8fbff; border-top:1px solid #dde6f1; }"
-        "QFrame#searchFrame { background:#edf2f7; border-radius:20px; }"
+        "ChatPage { background:#F4F3F9; }"
+        "QFrame#navFrame { background:#F4F3F9; }"
+        "QFrame#contactFrame { background:#F4F3F9; }"
+        "QFrame#rightFrame { background:#F4F3F9; }"
+        "QFrame#chatHeaderFrame { background:#F4F3F9; border-bottom:1px solid #e4e2eb; }"
+        "QFrame#composerFrame { background:#F4F3F9; border-top:1px solid #e4e2eb; }"
+        "QFrame#searchFrame { background:#EAE9EF; border-radius:17px; }"
         "QLineEdit#searchLineEdit { background:transparent; border:none; padding-left:14px; font: 10pt 'Microsoft YaHei UI'; color:#1f2937; }"
-        "QToolButton#addFriendButton { background:#dbeafe; border:none; border-radius:20px; font: 12pt 'Microsoft YaHei UI'; color:#1d4ed8; }"
-        "QToolButton#chatNavButton, QToolButton#friendRequestNavButton { min-height:56px; border:none; border-radius:18px; color:#9fb0c8; background:transparent; }"
-        "QToolButton#chatNavButton:checked, QToolButton#friendRequestNavButton:checked { background:#1f2937; color:#ffffff; }"
+        "QToolButton#addFriendButton { background:#E0DEE8; border:none; border-radius:17px; font: 11pt 'Microsoft YaHei UI'; color:#4b5563; }"
+        "QToolButton#chatNavButton, QToolButton#friendRequestNavButton { min-height:44px; border:none; border-radius:12px; color:#7b7a82; background:transparent; }"
+        "QToolButton#chatNavButton:checked, QToolButton#friendRequestNavButton:checked { background:#CBCACF; color:#1f2937; }"
         "QLabel#chatTitleLabel { font: 15pt 'Microsoft YaHei UI'; color:#111827; }"
-        "QToolButton#headerActionButton1, QToolButton#headerActionButton2, QToolButton#headerActionButton3 { background:#eef2ff; border:none; border-radius:14px; padding:8px 14px; color:#334155; font: 10pt 'Microsoft YaHei UI'; }"
+        "QToolButton#headerActionButton1, QToolButton#headerActionButton2, QToolButton#headerActionButton3 { background:#EAE9EF; border:none; border-radius:14px; padding:8px 14px; color:#334155; font: 10pt 'Microsoft YaHei UI'; }"
         "QPushButton#sendButton, QPushButton#mockReceiveButton { min-width:92px; min-height:38px; border:none; border-radius:19px; font: 10pt 'Microsoft YaHei UI'; }"
-        "QPushButton#mockReceiveButton { background:#e2e8f0; color:#334155; }"
-        "QPushButton#sendButton { background:#2563eb; color:white; }"
-        "QTextEdit { background:#ffffff; border:1px solid #dbe3ef; border-radius:18px; padding:14px; font: 10pt 'Microsoft YaHei UI'; }"
+        "QPushButton#mockReceiveButton { background:#EAE9EF; color:#334155; }"
+        "QPushButton#sendButton { background:#CBCACF; color:#111827; }"
+        "QTextEdit { background:#ffffff; border:1px solid #dfdde7; border-radius:18px; padding:12px; font: 10pt 'Microsoft YaHei UI'; }"
         "QLabel#friendRequestTitleLabel { font: 18pt 'Microsoft YaHei UI'; color:#111827; }"
         "QLabel#friendRequestHintLabel { font: 11pt 'Microsoft YaHei UI'; color:#64748b; }");
 
-    _chatInputEdit->setPlaceholderText("Type a message here. Paste images is supported.");
+    _chatInputEdit->setPlaceholderText("输入消息，Enter 发送，Shift+Enter 换行。");
 
     connect(_contactListWidget, &ContactListWidget::contactActivated, this, &ChatPage::onContactActivated);
     connect(ui->sendButton, &QPushButton::clicked, this, &ChatPage::onSendClicked);
     connect(ui->mockReceiveButton, &QPushButton::clicked, this, &ChatPage::onMockReceiveClicked);
     connect(_chatInputEdit, &ChatInputEdit::imagePasted, this, &ChatPage::onImagePasted);
+    connect(_chatInputEdit, &ChatInputEdit::sendRequested, this, &ChatPage::onSendClicked);
 }
 
 void ChatPage::setupNavigation()
@@ -171,12 +180,12 @@ void ChatPage::setupNavigation()
 void ChatPage::setupMockData()
 {
     const QStringList names = {
-        "Asteria Design",
-        "Chen Xingye",
-        "Nora",
-        "Project Group",
-        "Zhou Tiao",
-        "Oliver"
+        QStringLiteral("产品设计组"),
+        QStringLiteral("陈星野"),
+        QStringLiteral("诺拉"),
+        QStringLiteral("项目群"),
+        QStringLiteral("周迢"),
+        QStringLiteral("奥利弗")
     };
 
     for (int i = 0; i < names.size(); ++i) {
@@ -191,17 +200,17 @@ void ChatPage::setupMockData()
         incoming1.outgoing = false;
         incoming1.type = ChatMessageType::Text;
         incoming1.text = i % 2 == 0
-                         ? QStringLiteral("I have a new draft of the main layout. Please check the rhythm and density.")
-                         : QStringLiteral("I will add more mock data tonight. For now the main shell is the priority.");
+                         ? QStringLiteral("我先发你一版新的主界面稿，帮我看看信息密度和视觉节奏是否合适。")
+                         : QStringLiteral("今晚我会继续补测试数据，先把主界面的骨架走通。");
         incoming1.avatarColor = avatarColorForIndex(i);
         incoming1.timestamp = QDateTime::currentDateTime().addSecs(-(3600 * (i + 2)));
 
         MessageItem outgoing1;
         outgoing1.id = ++_messageIdSeed;
-        outgoing1.senderName = QStringLiteral("Me");
+        outgoing1.senderName = QStringLiteral("我");
         outgoing1.outgoing = true;
         outgoing1.type = ChatMessageType::Text;
-        outgoing1.text = QStringLiteral("Works for me. Let's push this direction first and refine details later.");
+        outgoing1.text = QStringLiteral("可以，先按这个方向推进，后面再补细节。");
         outgoing1.avatarColor = QColor("#111827");
         outgoing1.timestamp = incoming1.timestamp.addSecs(900);
 
@@ -210,7 +219,7 @@ void ChatPage::setupMockData()
         incoming2.senderName = names[i];
         incoming2.outgoing = false;
         incoming2.type = (i % 3 == 0) ? ChatMessageType::Image : ChatMessageType::Text;
-        incoming2.text = QStringLiteral("Adding one more reference image here.");
+        incoming2.text = QStringLiteral("我再补一张参考图给你。");
         incoming2.image = buildMockImage(avatarColorForIndex(i), names[i]);
         incoming2.avatarColor = avatarColorForIndex(i);
         incoming2.timestamp = outgoing1.timestamp.addSecs(1200);
@@ -253,14 +262,42 @@ void ChatPage::syncContactList()
     for (const Conversation &conversation : _conversations) {
         contacts.push_back(conversation.contact);
     }
-    _contactListWidget->setContacts(contacts);
+    const int currentContactId = _conversations.isEmpty() ? -1 : _conversations[_currentConversation].contact.id;
+    _contactListWidget->setContacts(contacts, currentContactId);
+}
+
+void ChatPage::sortConversationsByLatest()
+{
+    std::stable_sort(_conversations.begin(), _conversations.end(), [this](const Conversation &lhs, const Conversation &rhs) {
+        return latestTimestamp(lhs) > latestTimestamp(rhs);
+    });
+}
+
+int ChatPage::moveConversationToFront(int index)
+{
+    if (index <= 0 || index >= _conversations.size()) {
+        return qBound(0, index, qMax(0, _conversations.size() - 1));
+    }
+
+    const Conversation conversation = _conversations.takeAt(index);
+    _conversations.prepend(conversation);
+    return 0;
+}
+
+QDateTime ChatPage::latestTimestamp(const Conversation &conversation) const
+{
+    if (conversation.messages.isEmpty()) {
+        return QDateTime();
+    }
+
+    return conversation.messages.back().timestamp;
 }
 
 MessageItem ChatPage::createOutgoingTextMessage(const QString &text)
 {
     MessageItem message;
     message.id = ++_messageIdSeed;
-    message.senderName = QStringLiteral("Me");
+    message.senderName = QStringLiteral("我");
     message.outgoing = true;
     message.type = ChatMessageType::Text;
     message.text = text;
@@ -273,7 +310,7 @@ MessageItem ChatPage::createOutgoingImageMessage(const QImage &image)
 {
     MessageItem message;
     message.id = ++_messageIdSeed;
-    message.senderName = QStringLiteral("Me");
+    message.senderName = QStringLiteral("我");
     message.outgoing = true;
     message.type = ChatMessageType::Image;
     message.image = image;
@@ -285,9 +322,9 @@ MessageItem ChatPage::createOutgoingImageMessage(const QImage &image)
 MessageItem ChatPage::createIncomingMockMessage()
 {
     static const QStringList texts = {
-        QStringLiteral("I checked it. The list scrolling and layout direction are both correct."),
-        QStringLiteral("Add a search popup entry next and we can continue from there."),
-        QStringLiteral("I am sending a new round of mock data. Please check the bubble spacing.")
+        QStringLiteral("我看过了，列表滚动方向和布局关系都没问题。"),
+        QStringLiteral("你接下来可以补一下搜索弹层入口。"),
+        QStringLiteral("我再发一轮测试数据，你看看气泡和间距。")
     };
 
     MessageItem message;
@@ -304,7 +341,7 @@ MessageItem ChatPage::createIncomingMockMessage()
 QString ChatPage::formatMessagePreview(const MessageItem &message) const
 {
     if (message.type == ChatMessageType::Image) {
-        return QStringLiteral("[Image]");
+        return QStringLiteral("[图片]");
     }
     return message.text;
 }

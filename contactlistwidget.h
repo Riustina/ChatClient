@@ -15,7 +15,7 @@ class ContactListWidget : public QScrollArea
 public:
     explicit ContactListWidget(QWidget *parent = nullptr);
 
-    void setContacts(const QVector<ContactItem> &contacts);
+    void setContacts(const QVector<ContactItem> &contacts, int currentContactId = -1);
     int currentIndex() const;
 
 signals:

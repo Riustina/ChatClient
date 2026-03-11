@@ -22,10 +22,19 @@ ContactListWidget::ContactListWidget(QWidget *parent)
     });
 }
 
-void ContactListWidget::setContacts(const QVector<ContactItem> &contacts)
+void ContactListWidget::setContacts(const QVector<ContactItem> &contacts, int currentContactId)
 {
     _contacts = contacts;
-    if (_currentIndex >= _contacts.size()) {
+    if (currentContactId >= 0) {
+        int foundIndex = -1;
+        for (int i = 0; i < _contacts.size(); ++i) {
+            if (_contacts[i].id == currentContactId) {
+                foundIndex = i;
+                break;
+            }
+        }
+        _currentIndex = foundIndex >= 0 ? foundIndex : 0;
+    } else if (_currentIndex >= _contacts.size()) {
         _currentIndex = 0;
     }
     rebuildPool();

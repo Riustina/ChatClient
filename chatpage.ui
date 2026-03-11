@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1420</width>
-    <height>920</height>
+    <width>1170</width>
+    <height>810</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -33,13 +33,13 @@
     <widget class="QFrame" name="navFrame">
      <property name="minimumSize">
       <size>
-       <width>80</width>
+       <width>40</width>
        <height>0</height>
       </size>
      </property>
      <property name="maximumSize">
       <size>
-       <width>80</width>
+       <width>40</width>
        <height>16777215</height>
       </size>
      </property>
@@ -51,13 +51,13 @@
        <number>12</number>
       </property>
       <property name="leftMargin">
-       <number>10</number>
+       <number>6</number>
       </property>
       <property name="topMargin">
        <number>18</number>
       </property>
       <property name="rightMargin">
-       <number>10</number>
+       <number>6</number>
       </property>
       <property name="bottomMargin">
        <number>18</number>
@@ -105,13 +105,13 @@
     <widget class="QFrame" name="contactFrame">
      <property name="minimumSize">
       <size>
-       <width>340</width>
+       <width>255</width>
        <height>0</height>
       </size>
      </property>
      <property name="maximumSize">
       <size>
-       <width>340</width>
+       <width>255</width>
        <height>16777215</height>
       </size>
      </property>
@@ -357,13 +357,13 @@
             <property name="minimumSize">
              <size>
               <width>0</width>
-              <height>220</height>
+              <height>165</height>
              </size>
             </property>
             <property name="maximumSize">
              <size>
               <width>16777215</width>
-              <height>260</height>
+              <height>195</height>
              </size>
             </property>
             <property name="frameShape">

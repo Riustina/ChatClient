@@ -8,25 +8,31 @@
 #include <QtMath>
 
 namespace {
-constexpr int kAvatarSize = 40;
+constexpr int kAvatarSize = 34;
 constexpr int kSideMargin = 18;
 constexpr int kBubblePaddingH = 14;
-constexpr int kBubblePaddingV = 10;
-constexpr int kBubbleMaxWidth = 360;
+constexpr int kBubblePaddingV = 8;
+constexpr int kBubbleMaxWidth = 750;
 
 QPixmap buildAvatarPixmap(const QString &name, const QColor &color, const QSize &size)
 {
-    QPixmap pixmap(size);
+    const qreal dpr = 2.0;
+    QPixmap pixmap(size * dpr);
+    pixmap.setDevicePixelRatio(dpr);
     pixmap.fill(Qt::transparent);
 
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     painter.setBrush(color);
     painter.setPen(Qt::NoPen);
-    painter.drawEllipse(pixmap.rect().adjusted(1, 1, -1, -1));
+    painter.drawEllipse(QRectF(1.0, 1.0, size.width() - 2.0, size.height() - 2.0));
     painter.setPen(Qt::white);
-    painter.setFont(QFont("Microsoft YaHei UI", 10, QFont::DemiBold));
-    painter.drawText(pixmap.rect(), Qt::AlignCenter, name.left(1).toUpper());
+    QFont font("Microsoft YaHei UI", 9, QFont::DemiBold);
+    font.setStyleStrategy(QFont::PreferAntialias);
+    painter.setFont(font);
+    painter.drawText(QRectF(0, 0, size.width(), size.height()), Qt::AlignCenter, name.left(1).toUpper());
     return pixmap;
 }
 
@@ -44,13 +50,21 @@ QPixmap roundedPixmap(const QImage &image, const QSize &size)
     return pixmap;
 }
 
-int textContentHeight(const QString &text, int bubbleWidth)
+QSize textLayoutSize(const QString &text, int maxBubbleWidth)
 {
     QTextDocument document;
-    document.setDefaultFont(QFont("Microsoft YaHei UI", 10));
+    QFont font("Microsoft YaHei UI", 10);
+    font.setStyleStrategy(QFont::PreferAntialias);
+    document.setDefaultFont(font);
+    document.setDocumentMargin(0);
     document.setPlainText(text);
-    document.setTextWidth(bubbleWidth - 2 * kBubblePaddingH);
-    return qCeil(document.size().height()) + 2 * kBubblePaddingV;
+    document.adjustSize();
+
+    const int idealTextWidth = qCeil(document.idealWidth());
+    const int textWidth = qMax(1, qMin(maxBubbleWidth - 2 * kBubblePaddingH, idealTextWidth));
+    document.setTextWidth(textWidth);
+    const int textHeight = qCeil(document.size().height());
+    return QSize(textWidth, textHeight);
 }
 }
 
@@ -68,7 +82,9 @@ MessageCell::MessageCell(QWidget *parent)
     _textBrowser->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     _textBrowser->setReadOnly(true);
     _textBrowser->setTextInteractionFlags(Qt::TextSelectableByMouse | Qt::TextSelectableByKeyboard);
-    _textBrowser->setStyleSheet("background:transparent;");
+    _textBrowser->setContentsMargins(0, 0, 0, 0);
+    _textBrowser->document()->setDocumentMargin(0);
+    _textBrowser->setStyleSheet("background:transparent; border:none; padding:0px; margin:0px;");
 
     _imageLabel->setScaledContents(true);
     _imageLabel->hide();
@@ -78,7 +94,7 @@ void MessageCell::setMessage(const MessageItem &message, int availableWidth)
 {
     updateAvatar(message);
 
-    const int maxBubbleWidth = qMin(kBubbleMaxWidth, qMax(160, availableWidth - 2 * (kSideMargin + kAvatarSize + 16)));
+    const int maxBubbleWidth = qMin(kBubbleMaxWidth, qMax(80, availableWidth - 2 * (kSideMargin + kAvatarSize + 20)));
     int contentHeight = 0;
     int bubbleWidth = maxBubbleWidth;
 
@@ -86,11 +102,13 @@ void MessageCell::setMessage(const MessageItem &message, int availableWidth)
         _textBrowser->show();
         _imageLabel->hide();
         _textBrowser->setPlainText(message.text);
-        contentHeight = textContentHeight(message.text, bubbleWidth);
+        const QSize textSize = textLayoutSize(message.text, maxBubbleWidth);
+        bubbleWidth = textSize.width() + 2 * kBubblePaddingH;
+        contentHeight = textSize.height() + 2 * kBubblePaddingV;
         _bubbleWidget->setStyleSheet(message.outgoing
                                      ? "background:#d9f7be; border-radius:18px;"
                                      : "background:#ffffff; border-radius:18px;");
-        _textBrowser->setGeometry(0, 0, bubbleWidth, contentHeight);
+        _textBrowser->setGeometry(kBubblePaddingH, kBubblePaddingV, textSize.width(), textSize.height());
     } else {
         _textBrowser->hide();
         _imageLabel->show();
@@ -116,9 +134,10 @@ void MessageCell::setMessage(const MessageItem &message, int availableWidth)
 
 int MessageCell::heightForMessage(const MessageItem &message, int availableWidth)
 {
-    const int bubbleWidth = qMin(kBubbleMaxWidth, qMax(160, availableWidth - 2 * (kSideMargin + kAvatarSize + 16)));
+    const int bubbleWidth = qMin(kBubbleMaxWidth, qMax(80, availableWidth - 2 * (kSideMargin + kAvatarSize + 20)));
     if (message.type == ChatMessageType::Text) {
-        return qMax(textContentHeight(message.text, bubbleWidth), kAvatarSize) + 18;
+        const QSize textSize = textLayoutSize(message.text, bubbleWidth);
+        return qMax(textSize.height() + 2 * kBubblePaddingV, kAvatarSize) + 18;
     }
 
     const QSize sourceSize = message.image.isNull() ? QSize(200, 140) : message.image.size();

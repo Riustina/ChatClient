@@ -1,26 +1,34 @@
 #include "contactcell.h"
 
 #include <QHBoxLayout>
+#include <QEnterEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QVBoxLayout>
 
 namespace {
 QPixmap buildAvatarPixmap(const QString &name, const QColor &color, const QSize &size)
 {
-    QPixmap pixmap(size);
+    const qreal dpr = 2.0;
+    QPixmap pixmap(size * dpr);
+    pixmap.setDevicePixelRatio(dpr);
     pixmap.fill(Qt::transparent);
 
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::TextAntialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     painter.setBrush(color);
     painter.setPen(Qt::NoPen);
-    painter.drawEllipse(pixmap.rect().adjusted(1, 1, -1, -1));
+    painter.drawEllipse(QRectF(1.0, 1.0, size.width() - 2.0, size.height() - 2.0));
 
     painter.setPen(Qt::white);
-    painter.setFont(QFont("Microsoft YaHei UI", 12, QFont::DemiBold));
-    painter.drawText(pixmap.rect(), Qt::AlignCenter, name.left(1).toUpper());
+    QFont font("Microsoft YaHei UI", 10, QFont::DemiBold);
+    font.setStyleStrategy(QFont::PreferAntialias);
+    painter.setFont(font);
+    painter.drawText(QRectF(0, 0, size.width(), size.height()), Qt::AlignCenter, name.left(1).toUpper());
     return pixmap;
 }
 }
@@ -33,14 +41,14 @@ ContactCell::ContactCell(QWidget *parent)
     , _timeLabel(new QLabel(this))
 {
     auto *rootLayout = new QHBoxLayout(this);
-    rootLayout->setContentsMargins(16, 12, 16, 12);
-    rootLayout->setSpacing(12);
+    rootLayout->setContentsMargins(10, 6, 10, 6);
+    rootLayout->setSpacing(8);
 
-    _avatarLabel->setFixedSize(48, 48);
+    _avatarLabel->setFixedSize(30, 30);
 
     auto *textLayout = new QVBoxLayout;
     textLayout->setContentsMargins(0, 0, 0, 0);
-    textLayout->setSpacing(4);
+    textLayout->setSpacing(1);
     textLayout->addWidget(_nameLabel);
     textLayout->addWidget(_messageLabel);
 
@@ -49,13 +57,14 @@ ContactCell::ContactCell(QWidget *parent)
     rootLayout->addWidget(_timeLabel, 0, Qt::AlignTop);
 
     setFixedHeight(cellHeight());
+    setMouseTracking(true);
     updateStyles();
 }
 
 void ContactCell::setContact(const ContactItem &contact)
 {
     _nameLabel->setText(contact.name);
-    _messageLabel->setText(fontMetrics().elidedText(contact.lastMessage, Qt::ElideRight, 220));
+    _messageLabel->setText(fontMetrics().elidedText(contact.lastMessage, Qt::ElideRight, 140));
     _timeLabel->setText(contact.timeText);
     updateAvatar(contact);
 }
@@ -71,7 +80,7 @@ void ContactCell::setSelected(bool selected)
 
 int ContactCell::cellHeight()
 {
-    return 84;
+    return 42;
 }
 
 void ContactCell::mousePressEvent(QMouseEvent *event)
@@ -82,6 +91,20 @@ void ContactCell::mousePressEvent(QMouseEvent *event)
     }
 }
 
+void ContactCell::enterEvent(QEnterEvent *event)
+{
+    QWidget::enterEvent(event);
+    _hovered = true;
+    updateStyles();
+}
+
+void ContactCell::leaveEvent(QEvent *event)
+{
+    QWidget::leaveEvent(event);
+    _hovered = false;
+    updateStyles();
+}
+
 void ContactCell::updateAvatar(const ContactItem &contact)
 {
     _avatarLabel->setPixmap(buildAvatarPixmap(contact.name, contact.avatarColor, _avatarLabel->size()));
@@ -89,17 +112,25 @@ void ContactCell::updateAvatar(const ContactItem &contact)
 
 void ContactCell::updateStyles()
 {
-    const QString background = _selected ? "#e8f0ff" : "transparent";
-    const QString border = _selected ? "#d7e3ff" : "transparent";
+    QString background = "transparent";
+    if (_selected) {
+        background = "#CBCACF";
+    } else if (_hovered) {
+        background = "#EAE9EF";
+    }
 
     setStyleSheet(QString(
-        "ContactCell { background:%1; border:1px solid %2; border-radius:18px; }"
+        "ContactCell { background:%1; border:none; border-radius:12px; }"
         "QLabel { background:transparent; border:none; }")
-        .arg(background, border));
+        .arg(background));
 
-    _nameLabel->setFont(QFont("Microsoft YaHei UI", 11, QFont::DemiBold));
-    _messageLabel->setFont(QFont("Microsoft YaHei UI", 9));
-    _timeLabel->setFont(QFont("Microsoft YaHei UI", 9));
+    QFont nameFont("Microsoft YaHei UI", 9, QFont::DemiBold);
+    QFont textFont("Microsoft YaHei UI", 8);
+    nameFont.setStyleStrategy(QFont::PreferAntialias);
+    textFont.setStyleStrategy(QFont::PreferAntialias);
+    _nameLabel->setFont(nameFont);
+    _messageLabel->setFont(textFont);
+    _timeLabel->setFont(textFont);
     _nameLabel->setStyleSheet("color:#18212f;");
     _messageLabel->setStyleSheet("color:#6b7280;");
     _timeLabel->setStyleSheet("color:#94a3b8;");

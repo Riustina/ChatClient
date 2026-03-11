@@ -41,6 +41,9 @@ private:
     void bindConversation(int index);
     void refreshContactSummaries();
     void syncContactList();
+    void sortConversationsByLatest();
+    int moveConversationToFront(int index);
+    QDateTime latestTimestamp(const Conversation &conversation) const;
     MessageItem createOutgoingTextMessage(const QString &text);
     MessageItem createOutgoingImageMessage(const QImage &image);
     MessageItem createIncomingMockMessage();
