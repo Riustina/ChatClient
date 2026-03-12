@@ -4,6 +4,7 @@
 #include "addfrienddialog.h"
 #include "chatinputedit.h"
 #include "contactlistwidget.h"
+#include "friendrequestitemwidget.h"
 #include "messagelistwidget.h"
 #include "searchpopupwidget.h"
 
@@ -17,8 +18,11 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPointer>
+#include <QPushButton>
 #include <QRandomGenerator>
+#include <QScrollArea>
 #include <QTimer>
+#include <QVBoxLayout>
 #include <QStyle>
 #include <algorithm>
 
@@ -70,6 +74,7 @@ ChatPage::ChatPage(QWidget *parent)
     setupUiExtensions();
     setupNavigation();
     setupMockData();
+    setupFriendRequestPage();
     sortConversationsByLatest();
     refreshContactSummaries();
     syncContactList();
@@ -168,7 +173,9 @@ void ChatPage::onPopupAddFriendClicked(const QString &text)
             return;
         }
         AddFriendDialog dialog(targetName, that);
-        dialog.exec();
+        if (dialog.exec() == QDialog::Accepted) {
+            that->addOutgoingFriendRequest(targetName);
+        }
     });
 }
 
@@ -223,9 +230,17 @@ void ChatPage::setupUiExtensions()
         "QPushButton#sendButton { background:#CBCACF; color:#111827; }"
         "QPushButton#mockReceiveButton:pressed { background:#d9d6df; padding-top:1px; }"
         "QPushButton#sendButton:pressed { background:#b9b7be; padding-top:1px; }"
+        "QPushButton#mockFriendRequestButton { min-width:110px; min-height:34px; border:none; border-radius:17px; background:#CBCACF; color:#111827; font: 10pt 'Microsoft YaHei UI'; }"
+        "QPushButton#mockFriendRequestButton:pressed { background:#b9b7be; padding-top:1px; }"
         "QTextEdit { background:#F4F3F9; border:none; border-radius:18px; padding:12px; font: 10pt 'Microsoft YaHei UI'; }"
         "QLabel#friendRequestTitleLabel { font: 18pt 'Microsoft YaHei UI'; color:#111827; }"
-        "QLabel#friendRequestHintLabel { font: 11pt 'Microsoft YaHei UI'; color:#64748b; }");
+        "QLabel#friendRequestHintLabel { font: 11pt 'Microsoft YaHei UI'; color:#64748b; }"
+        "QScrollArea#friendRequestScrollArea { background:transparent; border:none; }"
+        "QScrollBar:vertical { background:transparent; width:8px; margin:6px 2px 6px 0px; }"
+        "QScrollBar::handle:vertical { background:#d9d2e2; border-radius:4px; min-height:30px; }"
+        "QScrollBar::handle:vertical:hover { background:#c8bfd3; }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0px; }"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background:transparent; }");
 
     _chatInputEdit->setPlaceholderText(QStringLiteral("输入消息，Enter 发送，Shift+Enter 换行。"));
     ui->searchLineEdit->setPlaceholderText(QStringLiteral("搜索联系人 / 添加好友"));
@@ -242,6 +257,36 @@ void ChatPage::setupUiExtensions()
     connect(ui->searchLineEdit, &QLineEdit::textChanged, this, &ChatPage::onSearchTextChanged);
     connect(_searchPopup, &SearchPopupWidget::addFriendClicked, this, &ChatPage::onPopupAddFriendClicked);
     connect(_searchPopup, &SearchPopupWidget::contactClicked, this, &ChatPage::onPopupContactClicked);
+}
+
+void ChatPage::setupFriendRequestPage()
+{
+    ui->friendRequestHintLabel->setText(QStringLiteral("这里展示你发起的好友申请，以及别人向你发来的好友申请。"));
+
+    _mockFriendRequestButton = new QPushButton(QStringLiteral("模拟收到申请"), this);
+    _mockFriendRequestButton->setObjectName("mockFriendRequestButton");
+
+    _friendRequestScrollArea = new QScrollArea(this);
+    _friendRequestScrollArea->setObjectName("friendRequestScrollArea");
+    _friendRequestScrollArea->setFrameShape(QFrame::NoFrame);
+    _friendRequestScrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    _friendRequestScrollArea->setWidgetResizable(true);
+
+    _friendRequestListWidget = new QWidget(_friendRequestScrollArea);
+    _friendRequestListWidget->setAttribute(Qt::WA_StyledBackground, true);
+    _friendRequestListWidget->setStyleSheet("background:transparent;");
+    _friendRequestListLayout = new QVBoxLayout(_friendRequestListWidget);
+    _friendRequestListLayout->setContentsMargins(0, 0, 6, 0);
+    _friendRequestListLayout->setSpacing(10);
+    _friendRequestListLayout->addStretch();
+
+    _friendRequestScrollArea->setWidget(_friendRequestListWidget);
+
+    ui->friendRequestLayout->insertWidget(2, _mockFriendRequestButton, 0, Qt::AlignLeft);
+    ui->friendRequestLayout->insertWidget(3, _friendRequestScrollArea, 1);
+
+    connect(_mockFriendRequestButton, &QPushButton::clicked, this, &ChatPage::onMockFriendRequestClicked);
+    refreshFriendRequestList();
 }
 
 void ChatPage::setupNavigation()
@@ -490,4 +535,147 @@ QString ChatPage::formatMessagePreview(const MessageItem &message) const
 QString ChatPage::formatMessageTime(const QDateTime &timestamp) const
 {
     return timestamp.time().toString("HH:mm");
+}
+
+void ChatPage::onMockFriendRequestClicked()
+{
+    static const QStringList names = {
+        QStringLiteral("林夏"),
+        QStringLiteral("周屿"),
+        QStringLiteral("程宁"),
+        QStringLiteral("沈青"),
+        QStringLiteral("许言"),
+        QStringLiteral("顾南")
+    };
+
+    const QString name = names[QRandomGenerator::global()->bounded(names.size())];
+    addIncomingFriendRequest(name);
+}
+
+void ChatPage::onFriendRequestAccepted(int requestId)
+{
+    for (FriendRequestItem &request : _friendRequests) {
+        if (request.id != requestId) {
+            continue;
+        }
+
+        request.state = FriendRequestState::Added;
+        ensureConversationForFriend(request);
+        break;
+    }
+
+    refreshContactSummaries();
+    sortConversationsByLatest();
+    syncContactList();
+    refreshFriendRequestList();
+}
+
+QColor ChatPage::avatarColorForName(const QString &name) const
+{
+    int seed = 0;
+    for (const QChar ch : name) {
+        seed += ch.unicode();
+    }
+    return avatarColorForIndex(seed);
+}
+
+void ChatPage::addOutgoingFriendRequest(const QString &name)
+{
+    if (name.isEmpty()) {
+        return;
+    }
+
+    int existingContactId = 0;
+    for (const Conversation &conversation : _conversations) {
+        if (conversation.contact.name == name) {
+            existingContactId = conversation.contact.id;
+            break;
+        }
+    }
+
+    FriendRequestItem request;
+    request.id = ++_friendRequestIdSeed;
+    request.contactId = existingContactId;
+    request.name = name;
+    request.avatarColor = avatarColorForName(name);
+    request.direction = FriendRequestDirection::Outgoing;
+    request.state = existingContactId > 0 ? FriendRequestState::Added : FriendRequestState::Pending;
+    request.createdAt = QDateTime::currentDateTime();
+    _friendRequests.prepend(request);
+    refreshFriendRequestList();
+}
+
+void ChatPage::addIncomingFriendRequest(const QString &name)
+{
+    int existingContactId = 0;
+    for (const Conversation &conversation : _conversations) {
+        if (conversation.contact.name == name) {
+            existingContactId = conversation.contact.id;
+            break;
+        }
+    }
+
+    FriendRequestItem request;
+    request.id = ++_friendRequestIdSeed;
+    request.contactId = existingContactId;
+    request.name = name;
+    request.avatarColor = avatarColorForName(name);
+    request.direction = FriendRequestDirection::Incoming;
+    request.state = FriendRequestState::Pending;
+    request.createdAt = QDateTime::currentDateTime();
+    _friendRequests.prepend(request);
+    refreshFriendRequestList();
+}
+
+void ChatPage::refreshFriendRequestList()
+{
+    while (QLayoutItem *item = _friendRequestListLayout->takeAt(0)) {
+        if (QWidget *widget = item->widget()) {
+            delete widget;
+        }
+        delete item;
+    }
+
+    for (const FriendRequestItem &request : _friendRequests) {
+        auto *itemWidget = new FriendRequestItemWidget(_friendRequestListWidget);
+        itemWidget->setRequestItem(request);
+        connect(itemWidget, &FriendRequestItemWidget::acceptClicked, this, &ChatPage::onFriendRequestAccepted);
+        _friendRequestListLayout->addWidget(itemWidget);
+    }
+
+    _friendRequestListLayout->addStretch();
+}
+
+void ChatPage::ensureConversationForFriend(FriendRequestItem &item)
+{
+    if (conversationIndexById(item.contactId) >= 0) {
+        return;
+    }
+
+    int nextId = 1;
+    for (const Conversation &conversation : _conversations) {
+        nextId = qMax(nextId, conversation.contact.id + 1);
+    }
+    if (item.contactId <= 0) {
+        item.contactId = nextId;
+    }
+
+    Conversation conversation;
+    conversation.contact.id = item.contactId;
+    conversation.contact.name = item.name;
+    conversation.contact.avatarColor = item.avatarColor;
+    conversation.contact.lastMessage = QStringLiteral("我们已经成为好友");
+    conversation.contact.timeText = QDateTime::currentDateTime().time().toString("HH:mm");
+
+    MessageItem welcome;
+    welcome.id = ++_messageIdSeed;
+    welcome.senderName = item.name;
+    welcome.outgoing = false;
+    welcome.type = ChatMessageType::Text;
+    welcome.text = QStringLiteral("你好，我们现在已经是好友了。");
+    welcome.avatarColor = item.avatarColor;
+    welcome.timestamp = QDateTime::currentDateTime();
+    conversation.messages.push_back(welcome);
+
+    _conversations.prepend(conversation);
 }

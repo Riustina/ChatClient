@@ -14,6 +14,7 @@ SOURCES += \
     chatpage.cpp \
     contactcell.cpp \
     contactlistwidget.cpp \
+    friendrequestitemwidget.cpp \
     searchpopupwidget.cpp \
     global.cpp \
     httpmgr.cpp \
@@ -35,6 +36,7 @@ HEADERS += \
     chattypes.h \
     contactcell.h \
     contactlistwidget.h \
+    friendrequestitemwidget.h \
     searchpopupwidget.h \
     global.h \
     httpmgr.h \

@@ -11,6 +11,16 @@ enum class ChatMessageType {
     Image
 };
 
+enum class FriendRequestDirection {
+    Outgoing,
+    Incoming
+};
+
+enum class FriendRequestState {
+    Pending,
+    Added
+};
+
 struct ContactItem {
     int id = 0;
     QString name;
@@ -28,6 +38,16 @@ struct MessageItem {
     QImage image;
     QColor avatarColor;
     QDateTime timestamp;
+};
+
+struct FriendRequestItem {
+    int id = 0;
+    int contactId = 0;
+    QString name;
+    QColor avatarColor;
+    FriendRequestDirection direction = FriendRequestDirection::Outgoing;
+    FriendRequestState state = FriendRequestState::Pending;
+    QDateTime createdAt;
 };
 
 #endif // CHATTYPES_H

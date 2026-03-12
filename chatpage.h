@@ -13,9 +13,14 @@ QT_END_NAMESPACE
 
 class ChatInputEdit;
 class ContactListWidget;
+class FriendRequestItemWidget;
 class MessageListWidget;
 class SearchPopupWidget;
 class QLineEdit;
+class QPushButton;
+class QScrollArea;
+class QVBoxLayout;
+class QWidget;
 
 class ChatPage : public QWidget
 {
@@ -36,6 +41,8 @@ private slots:
     void onSearchTextChanged(const QString &text);
     void onPopupAddFriendClicked(const QString &text);
     void onPopupContactClicked(int contactId);
+    void onMockFriendRequestClicked();
+    void onFriendRequestAccepted(int requestId);
 
 private:
     struct Conversation {
@@ -46,6 +53,7 @@ private:
     void setupUiExtensions();
     void setupNavigation();
     void setupMockData();
+    void setupFriendRequestPage();
     void bindConversation(int index);
     void showSearchPopup();
     void hideSearchPopup();
@@ -62,15 +70,26 @@ private:
     MessageItem createIncomingMockMessage();
     QString formatMessagePreview(const MessageItem &message) const;
     QString formatMessageTime(const QDateTime &timestamp) const;
+    QColor avatarColorForName(const QString &name) const;
+    void addOutgoingFriendRequest(const QString &name);
+    void addIncomingFriendRequest(const QString &name);
+    void refreshFriendRequestList();
+    void ensureConversationForFriend(FriendRequestItem &item);
 
     Ui::ChatPage *ui;
     ContactListWidget *_contactListWidget;
     MessageListWidget *_messageListWidget;
     ChatInputEdit *_chatInputEdit;
     SearchPopupWidget *_searchPopup;
+    QPushButton *_mockFriendRequestButton = nullptr;
+    QScrollArea *_friendRequestScrollArea = nullptr;
+    QWidget *_friendRequestListWidget = nullptr;
+    QVBoxLayout *_friendRequestListLayout = nullptr;
     QVector<Conversation> _conversations;
+    QVector<FriendRequestItem> _friendRequests;
     int _currentConversation = 0;
     int _messageIdSeed = 1000;
+    int _friendRequestIdSeed = 2000;
 };
 
 #endif // CHATPAGE_H
