@@ -27,8 +27,10 @@ protected:
     void mousePressEvent(QMouseEvent *event) override;
     void enterEvent(QEnterEvent *event) override;
     void leaveEvent(QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 private:
+    void updateMessageText();
     void updateAvatar(const ContactItem &contact);
     void updateStyles();
 
@@ -36,6 +38,7 @@ private:
     QLabel *_nameLabel;
     QLabel *_messageLabel;
     QLabel *_timeLabel;
+    QString _lastMessageText;
     bool _selected = false;
     bool _hovered = false;
 };

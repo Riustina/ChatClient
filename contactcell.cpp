@@ -6,6 +6,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QResizeEvent>
 #include <QVBoxLayout>
 
 namespace {
@@ -46,21 +47,37 @@ ContactCell::ContactCell(QWidget *parent)
 
     setAttribute(Qt::WA_StyledBackground, true);
     setAttribute(Qt::WA_Hover, true);
-    _avatarLabel->setFixedSize(30, 30);
+    _avatarLabel->setFixedSize(34, 34);
     _avatarLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     _nameLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     _messageLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     _timeLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
 
-    auto *textLayout = new QVBoxLayout;
-    textLayout->setContentsMargins(0, 0, 0, 0);
-    textLayout->setSpacing(1);
-    textLayout->addWidget(_nameLabel);
-    textLayout->addWidget(_messageLabel);
+    auto *contentLayout = new QVBoxLayout;
+    contentLayout->setContentsMargins(0, 2, 0, 0);
+    contentLayout->setSpacing(2);
 
-    rootLayout->addWidget(_avatarLabel, 0, Qt::AlignVCenter);
-    rootLayout->addLayout(textLayout, 1);
-    rootLayout->addWidget(_timeLabel, 0, Qt::AlignTop);
+    auto *headerLayout = new QHBoxLayout;
+    headerLayout->setContentsMargins(0, 0, 0, 0);
+    headerLayout->setSpacing(8);
+    headerLayout->addWidget(_nameLabel, 1, Qt::AlignVCenter);
+    headerLayout->addWidget(_timeLabel, 0, Qt::AlignVCenter);
+    auto *headerRow = new QWidget(this);
+    headerRow->setLayout(headerLayout);
+    headerRow->setFixedHeight(18);
+
+    _messageLabel->setWordWrap(false);
+    _messageLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    _messageLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    _messageLabel->setFixedHeight(16);
+
+    contentLayout->addSpacing(5);
+    contentLayout->addWidget(headerRow);
+    contentLayout->addWidget(_messageLabel);
+    contentLayout->addStretch();
+
+    rootLayout->addWidget(_avatarLabel, 0, Qt::AlignCenter);
+    rootLayout->addLayout(contentLayout, 1);
 
     setFixedHeight(cellHeight());
     setMouseTracking(true);
@@ -70,9 +87,10 @@ ContactCell::ContactCell(QWidget *parent)
 void ContactCell::setContact(const ContactItem &contact)
 {
     _nameLabel->setText(contact.name);
-    _messageLabel->setText(fontMetrics().elidedText(contact.lastMessage, Qt::ElideRight, 140));
+    _lastMessageText = contact.lastMessage;
     _timeLabel->setText(contact.timeText);
     updateAvatar(contact);
+    updateMessageText();
 }
 
 void ContactCell::setSelected(bool selected)
@@ -111,10 +129,22 @@ void ContactCell::leaveEvent(QEvent *event)
     updateStyles();
 }
 
+void ContactCell::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateMessageText();
+}
+
+void ContactCell::updateMessageText()
+{
+    const int availableWidth = qMax(40, _messageLabel->width());
+    _messageLabel->setText(_messageLabel->fontMetrics().elidedText(_lastMessageText, Qt::ElideRight, availableWidth));
+}
+
 void ContactCell::updateAvatar(const ContactItem &contact)
 {
     _avatarLabel->setPixmap(buildAvatarPixmap(contact.name, contact.avatarColor, _avatarLabel->size()));
-    _avatarLabel->setContentsMargins(0, 2, 0, 0);
+    _avatarLabel->setContentsMargins(0, 0, 0, 0);
 }
 
 void ContactCell::updateStyles()
@@ -135,6 +165,9 @@ void ContactCell::updateStyles()
     _nameLabel->setFont(nameFont);
     _messageLabel->setFont(textFont);
     _timeLabel->setFont(textFont);
+    _messageLabel->setFixedHeight(_messageLabel->fontMetrics().height() + 3);
+    _nameLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    _timeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     _nameLabel->setStyleSheet("color:#18212f; background:transparent;");
     _messageLabel->setStyleSheet("color:#6b7280; background:transparent;");
     _timeLabel->setStyleSheet("color:#94a3b8; background:transparent;");
