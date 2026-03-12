@@ -39,6 +39,8 @@ FriendRequestItemWidget::FriendRequestItemWidget(QWidget *parent)
     , _acceptButton(new QPushButton(QStringLiteral("同意"), this))
 {
     setAttribute(Qt::WA_StyledBackground, true);
+    setFixedHeight(82);
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     auto *rootLayout = new QHBoxLayout(this);
     rootLayout->setContentsMargins(14, 12, 14, 12);

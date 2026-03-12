@@ -113,7 +113,10 @@ bool ChatPage::eventFilter(QObject *watched, QEvent *event)
 
 void ChatPage::onContactActivated(int index)
 {
+    ui->chatNavButton->setChecked(true);
+    ui->rightStackedWidget->setCurrentIndex(0);
     bindConversation(index);
+    syncContactList();
 }
 
 void ChatPage::onSendClicked()
