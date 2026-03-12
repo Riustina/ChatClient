@@ -75,6 +75,7 @@ private:
     void addIncomingFriendRequest(const QString &name);
     void refreshFriendRequestList();
     void ensureConversationForFriend(FriendRequestItem &item);
+    void restoreCurrentConversation(int contactId);
 
     Ui::ChatPage *ui;
     ContactListWidget *_contactListWidget;

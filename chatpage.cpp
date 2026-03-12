@@ -557,6 +557,10 @@ void ChatPage::onMockFriendRequestClicked()
 
 void ChatPage::onFriendRequestAccepted(int requestId)
 {
+    const int currentContactId = (_currentConversation >= 0 && _currentConversation < _conversations.size())
+        ? _conversations[_currentConversation].contact.id
+        : -1;
+
     for (FriendRequestItem &request : _friendRequests) {
         if (request.id != requestId) {
             continue;
@@ -569,7 +573,9 @@ void ChatPage::onFriendRequestAccepted(int requestId)
 
     refreshContactSummaries();
     sortConversationsByLatest();
+    restoreCurrentConversation(currentContactId);
     syncContactList();
+    bindConversation(_currentConversation);
     refreshFriendRequestList();
 }
 
@@ -681,4 +687,20 @@ void ChatPage::ensureConversationForFriend(FriendRequestItem &item)
     conversation.messages.push_back(welcome);
 
     _conversations.prepend(conversation);
+}
+
+void ChatPage::restoreCurrentConversation(int contactId)
+{
+    if (contactId < 0) {
+        _currentConversation = qBound(0, _currentConversation, qMax(0, _conversations.size() - 1));
+        return;
+    }
+
+    const int restoredIndex = conversationIndexById(contactId);
+    if (restoredIndex >= 0) {
+        _currentConversation = restoredIndex;
+        return;
+    }
+
+    _currentConversation = qBound(0, _currentConversation, qMax(0, _conversations.size() - 1));
 }
