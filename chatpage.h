@@ -14,6 +14,8 @@ QT_END_NAMESPACE
 class ChatInputEdit;
 class ContactListWidget;
 class MessageListWidget;
+class SearchPopupWidget;
+class QLineEdit;
 
 class ChatPage : public QWidget
 {
@@ -23,11 +25,17 @@ public:
     explicit ChatPage(QWidget *parent = nullptr);
     ~ChatPage();
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private slots:
     void onContactActivated(int index);
     void onSendClicked();
     void onMockReceiveClicked();
     void onImagePasted();
+    void onSearchTextChanged(const QString &text);
+    void onPopupAddFriendClicked(const QString &text);
+    void onPopupContactClicked(int contactId);
 
 private:
     struct Conversation {
@@ -39,6 +47,11 @@ private:
     void setupNavigation();
     void setupMockData();
     void bindConversation(int index);
+    void showSearchPopup();
+    void hideSearchPopup();
+    void updateSearchPopup();
+    QVector<ContactItem> filteredContacts(const QString &text) const;
+    int conversationIndexById(int contactId) const;
     void refreshContactSummaries();
     void syncContactList();
     void sortConversationsByLatest();
@@ -54,6 +67,7 @@ private:
     ContactListWidget *_contactListWidget;
     MessageListWidget *_messageListWidget;
     ChatInputEdit *_chatInputEdit;
+    SearchPopupWidget *_searchPopup;
     QVector<Conversation> _conversations;
     int _currentConversation = 0;
     int _messageIdSeed = 1000;

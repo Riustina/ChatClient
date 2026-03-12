@@ -49,12 +49,3 @@ D:\Qt\Tools\mingw1310_64\bin\mingw32-make.exe -j1
 
 - 如果链接时报 `debug\ChatClient.exe: Permission denied`，通常是程序仍在运行，占用了可执行文件，先关闭程序再重新编译
 - `QButtonGroup` 如果需要按 id 处理，使用 `&QButtonGroup::idClicked`，不要误写成 `QOverload<int>::of(&QButtonGroup::buttonClicked)`
-
-## 建议优先查看
-
-- `introduction.md`
-- `速查表.md`
-- `chatpage.*`
-- `contactlistwidget.*`
-- `messagelistwidget.*`
-- `ChatClient.pro`

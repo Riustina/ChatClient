@@ -1,13 +1,20 @@
 #include "chatpage.h"
 #include "ui_chatpage.h"
 
+#include "addfrienddialog.h"
 #include "chatinputedit.h"
 #include "contactlistwidget.h"
 #include "messagelistwidget.h"
+#include "searchpopupwidget.h"
 
+#include <QApplication>
 #include <QButtonGroup>
 #include <QDateTime>
+#include <QEvent>
+#include <QFocusEvent>
+#include <QLineEdit>
 #include <QLinearGradient>
+#include <QMouseEvent>
 #include <QPainter>
 #include <QRandomGenerator>
 #include <QStyle>
@@ -54,6 +61,7 @@ ChatPage::ChatPage(QWidget *parent)
     , _contactListWidget(new ContactListWidget(this))
     , _messageListWidget(new MessageListWidget(this))
     , _chatInputEdit(new ChatInputEdit(this))
+    , _searchPopup(new SearchPopupWidget(this))
 {
     ui->setupUi(this);
 
@@ -68,7 +76,32 @@ ChatPage::ChatPage(QWidget *parent)
 
 ChatPage::~ChatPage()
 {
+    qApp->removeEventFilter(this);
     delete ui;
+}
+
+bool ChatPage::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == ui->searchLineEdit) {
+        if (event->type() == QEvent::FocusIn) {
+            showSearchPopup();
+        } else if (event->type() == QEvent::MouseButtonPress) {
+            showSearchPopup();
+        }
+    }
+
+    if (_searchPopup->isVisible() && event->type() == QEvent::MouseButtonPress) {
+        auto *mouseEvent = static_cast<QMouseEvent *>(event);
+        const QPoint globalPos = mouseEvent->globalPosition().toPoint();
+        const bool inSearch = ui->searchLineEdit->rect().contains(ui->searchLineEdit->mapFromGlobal(globalPos));
+        const QRect popupRect(_searchPopup->mapToGlobal(QPoint(0, 0)), _searchPopup->size());
+        const bool inPopup = popupRect.contains(globalPos);
+        if (!inSearch && !inPopup) {
+            hideSearchPopup();
+        }
+    }
+
+    return QWidget::eventFilter(watched, event);
 }
 
 void ChatPage::onContactActivated(int index)
@@ -115,6 +148,29 @@ void ChatPage::onImagePasted()
     }
 }
 
+void ChatPage::onSearchTextChanged(const QString &text)
+{
+    Q_UNUSED(text);
+    updateSearchPopup();
+}
+
+void ChatPage::onPopupAddFriendClicked(const QString &text)
+{
+    hideSearchPopup();
+    AddFriendDialog dialog(text.trimmed(), this);
+    dialog.exec();
+}
+
+void ChatPage::onPopupContactClicked(int contactId)
+{
+    const int index = conversationIndexById(contactId);
+    if (index >= 0) {
+        bindConversation(index);
+        syncContactList();
+    }
+    hideSearchPopup();
+}
+
 void ChatPage::setupUiExtensions()
 {
     ui->contactListLayout->addWidget(_contactListWidget);
@@ -144,9 +200,7 @@ void ChatPage::setupUiExtensions()
         "QFrame#chatHeaderFrame { background:#F4F3F9; border-bottom:1px solid #e4e2eb; }"
         "QFrame#composerFrame { background:#F4F3F9; border-top:1px solid #e4e2eb; }"
         "QFrame#searchFrame { background:#EAE9EF; border-radius:17px; }"
-        "QLineEdit#searchLineEdit { background:transparent; border:none; padding-left:14px; font: 10pt 'Microsoft YaHei UI'; color:#1f2937; }"
-        "QToolButton#addFriendButton { background:#E0DEE8; border:none; border-radius:17px; font: 11pt 'Microsoft YaHei UI'; color:#4b5563; }"
-        "QToolButton#addFriendButton:pressed { background:#d1ced9; }"
+        "QLineEdit#searchLineEdit { background:transparent; border:none; padding:0 14px; font: 10pt 'Microsoft YaHei UI'; color:#1f2937; }"
         "QToolButton#chatNavButton, QToolButton#friendRequestNavButton { min-width:30px; max-width:30px; min-height:30px; max-height:30px; padding:0px; border:none; border-radius:9px; color:#7b7a82; background:transparent; }"
         "QToolButton#chatNavButton:hover:!checked, QToolButton#friendRequestNavButton:hover:!checked { background:#EAE9EF; color:#1f2937; }"
         "QToolButton#chatNavButton:checked, QToolButton#friendRequestNavButton:checked { background:#CBCACF; color:#1f2937; }"
@@ -163,12 +217,20 @@ void ChatPage::setupUiExtensions()
         "QLabel#friendRequestHintLabel { font: 11pt 'Microsoft YaHei UI'; color:#64748b; }");
 
     _chatInputEdit->setPlaceholderText(QStringLiteral("输入消息，Enter 发送，Shift+Enter 换行。"));
+    ui->searchLineEdit->setPlaceholderText(QStringLiteral("搜索联系人 / 添加好友"));
+
+    _searchPopup->hide();
+    ui->searchLineEdit->installEventFilter(this);
+    qApp->installEventFilter(this);
 
     connect(_contactListWidget, &ContactListWidget::contactActivated, this, &ChatPage::onContactActivated);
     connect(ui->sendButton, &QPushButton::clicked, this, &ChatPage::onSendClicked);
     connect(ui->mockReceiveButton, &QPushButton::clicked, this, &ChatPage::onMockReceiveClicked);
     connect(_chatInputEdit, &ChatInputEdit::imagePasted, this, &ChatPage::onImagePasted);
     connect(_chatInputEdit, &ChatInputEdit::sendRequested, this, &ChatPage::onSendClicked);
+    connect(ui->searchLineEdit, &QLineEdit::textChanged, this, &ChatPage::onSearchTextChanged);
+    connect(_searchPopup, &SearchPopupWidget::addFriendClicked, this, &ChatPage::onPopupAddFriendClicked);
+    connect(_searchPopup, &SearchPopupWidget::contactClicked, this, &ChatPage::onPopupContactClicked);
 }
 
 void ChatPage::setupNavigation()
@@ -259,6 +321,50 @@ void ChatPage::bindConversation(int index)
     _currentConversation = index;
     ui->chatTitleLabel->setText(_conversations[index].contact.name);
     _messageListWidget->setMessages(_conversations[index].messages);
+}
+
+void ChatPage::showSearchPopup()
+{
+    updateSearchPopup();
+    const QPoint belowSearch = mapFromGlobal(ui->searchLineEdit->mapToGlobal(QPoint(0, ui->searchLineEdit->height() + 6)));
+    const int width = ui->searchLineEdit->width();
+    _searchPopup->resize(width, _searchPopup->popupHeight());
+    _searchPopup->move(belowSearch);
+    _searchPopup->show();
+    _searchPopup->raise();
+}
+
+void ChatPage::hideSearchPopup()
+{
+    _searchPopup->hide();
+}
+
+void ChatPage::updateSearchPopup()
+{
+    const QString text = ui->searchLineEdit->text().trimmed();
+    _searchPopup->setSearchText(text);
+    _searchPopup->setResults(filteredContacts(text), _conversations[_currentConversation].contact.id);
+}
+
+QVector<ContactItem> ChatPage::filteredContacts(const QString &text) const
+{
+    QVector<ContactItem> results;
+    for (const Conversation &conversation : _conversations) {
+        if (text.isEmpty() || conversation.contact.name.contains(text, Qt::CaseInsensitive)) {
+            results.push_back(conversation.contact);
+        }
+    }
+    return results;
+}
+
+int ChatPage::conversationIndexById(int contactId) const
+{
+    for (int i = 0; i < _conversations.size(); ++i) {
+        if (_conversations[i].contact.id == contactId) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 void ChatPage::refreshContactSummaries()
