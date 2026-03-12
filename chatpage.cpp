@@ -16,7 +16,9 @@
 #include <QLinearGradient>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPointer>
 #include <QRandomGenerator>
+#include <QTimer>
 #include <QStyle>
 #include <algorithm>
 
@@ -157,8 +159,17 @@ void ChatPage::onSearchTextChanged(const QString &text)
 void ChatPage::onPopupAddFriendClicked(const QString &text)
 {
     hideSearchPopup();
-    AddFriendDialog dialog(text.trimmed(), this);
-    dialog.exec();
+    ui->searchLineEdit->clearFocus();
+
+    const QString targetName = text.trimmed();
+    QPointer<ChatPage> that(this);
+    QTimer::singleShot(0, this, [that, targetName]() {
+        if (!that) {
+            return;
+        }
+        AddFriendDialog dialog(targetName, that);
+        dialog.exec();
+    });
 }
 
 void ChatPage::onPopupContactClicked(int contactId)
@@ -349,8 +360,11 @@ void ChatPage::updateSearchPopup()
 QVector<ContactItem> ChatPage::filteredContacts(const QString &text) const
 {
     QVector<ContactItem> results;
+    if (text.isEmpty()) {
+        return results;
+    }
     for (const Conversation &conversation : _conversations) {
-        if (text.isEmpty() || conversation.contact.name.contains(text, Qt::CaseInsensitive)) {
+        if (conversation.contact.name.contains(text, Qt::CaseInsensitive)) {
             results.push_back(conversation.contact);
         }
     }

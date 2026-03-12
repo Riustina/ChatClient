@@ -6,6 +6,7 @@
 #include "chattypes.h"
 
 class QScrollArea;
+class QResizeEvent;
 class QVBoxLayout;
 class QWidget;
 
@@ -26,7 +27,10 @@ signals:
     void contactClicked(int contactId);
 
 private:
+    void resizeEvent(QResizeEvent *event) override;
     void rebuild();
+    int contentHeight() const;
+    bool hasActiveQuery() const;
     QWidget *createAddRow();
     QWidget *createEmptyRow();
 

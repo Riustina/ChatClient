@@ -2,14 +2,19 @@
 
 #include "contactcell.h"
 
+#include <QGraphicsDropShadowEffect>
 #include <QLabel>
 #include <QMouseEvent>
+#include <QResizeEvent>
 #include <QScrollArea>
 #include <QVBoxLayout>
 
 namespace {
 constexpr int kAddRowHeight = 42;
 constexpr int kEmptyRowHeight = 42;
+constexpr int kOuterPadding = 8;
+constexpr int kInnerPadding = 8;
+constexpr int kRowSpacing = 4;
 
 class ClickableRow : public QFrame
 {
@@ -47,30 +52,47 @@ SearchPopupWidget::SearchPopupWidget(QWidget *parent)
     setObjectName("searchPopupWidget");
     setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
 
+    auto *shadow = new QGraphicsDropShadowEffect(this);
+    shadow->setBlurRadius(26);
+    shadow->setOffset(0, 10);
+    shadow->setColor(QColor(130, 120, 150, 55));
+    setGraphicsEffect(shadow);
+
     auto *rootLayout = new QVBoxLayout(this);
-    rootLayout->setContentsMargins(8, 8, 8, 8);
+    rootLayout->setContentsMargins(kOuterPadding, kOuterPadding, kOuterPadding, kOuterPadding);
     rootLayout->setSpacing(0);
 
     _scrollArea->setFrameShape(QFrame::NoFrame);
     _scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     _scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    _scrollArea->setWidgetResizable(true);
+    _scrollArea->setWidgetResizable(false);
     _scrollArea->setFocusPolicy(Qt::NoFocus);
     _scrollArea->setWidget(_contentWidget);
     rootLayout->addWidget(_scrollArea);
 
-    _layout->setContentsMargins(8, 8, 8, 8);
-    _layout->setSpacing(4);
+    _layout->setContentsMargins(kInnerPadding, kInnerPadding, kInnerPadding, kInnerPadding);
+    _layout->setSpacing(kRowSpacing);
 
     setStyleSheet(
-        "QFrame#searchPopupWidget { background:#F4F3F9; border:1px solid #dfdde7; border-radius:14px; }"
+        "QFrame#searchPopupWidget { background:#FCF8FF; border:1px solid #e7e0ef; border-radius:14px; }"
         "QFrame#searchAddRow { background:transparent; border-radius:10px; }"
         "QFrame#searchAddRow:hover { background:#EAE9EF; }"
         "QLabel#searchAddLabel { font: 10pt 'Microsoft YaHei UI'; color:#1f2937; padding:10px 12px; }"
         "QFrame#searchEmptyRow { background:transparent; }"
         "QLabel#searchEmptyLabel { font: 10pt 'Microsoft YaHei UI'; color:#64748b; padding:10px 12px; }"
         "QScrollArea { background:transparent; border:none; }"
+        "QScrollBar:vertical { background:transparent; width:8px; margin:6px 2px 6px 0px; }"
+        "QScrollBar::handle:vertical { background:#d9d2e2; border-radius:4px; min-height:30px; }"
+        "QScrollBar::handle:vertical:hover { background:#c8bfd3; }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height:0px; }"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background:transparent; }"
         "QWidget { background:transparent; }");
+}
+
+void SearchPopupWidget::resizeEvent(QResizeEvent *event)
+{
+    QFrame::resizeEvent(event);
+    _contentWidget->setFixedWidth(_scrollArea->viewport()->width());
 }
 
 void SearchPopupWidget::setSearchText(const QString &text)
@@ -95,9 +117,11 @@ void SearchPopupWidget::rebuild()
         delete item;
     }
 
-    _layout->addWidget(createAddRow());
+    if (hasActiveQuery()) {
+        _layout->addWidget(createAddRow());
+    }
 
-    if (_results.isEmpty()) {
+    if (!hasActiveQuery() || _results.isEmpty()) {
         _layout->addWidget(createEmptyRow());
     } else {
         for (const ContactItem &contact : _results) {
@@ -111,27 +135,50 @@ void SearchPopupWidget::rebuild()
         }
     }
 
-    _layout->addStretch();
     _layout->activate();
-    _contentWidget->adjustSize();
 
-    const int viewportHeight = qMin(popupHeight(), maxPopupHeight());
+    const int innerHeight = contentHeight();
+    const int viewportHeight = qMin(innerHeight, maxPopupHeight());
+    _contentWidget->setFixedSize(_scrollArea->viewport()->width(), innerHeight);
     _scrollArea->setFixedHeight(viewportHeight);
-    setFixedHeight(viewportHeight + 16);
+    setFixedHeight(viewportHeight + (kOuterPadding * 2));
 }
 
 int SearchPopupWidget::popupHeight() const
 {
-    const int resultCount = _results.isEmpty() ? 1 : _results.size();
-    const int margins = _layout->contentsMargins().top() + _layout->contentsMargins().bottom();
-    const int spacing = _layout->spacing() * resultCount;
-    const int bodyHeight = _results.isEmpty() ? kEmptyRowHeight : _results.size() * ContactCell::cellHeight();
-    return margins + kAddRowHeight + bodyHeight + spacing;
+    return contentHeight() + (kOuterPadding * 2);
 }
 
 int SearchPopupWidget::maxPopupHeight()
 {
     return 320;
+}
+
+int SearchPopupWidget::contentHeight() const
+{
+    const int margins = _layout->contentsMargins().top() + _layout->contentsMargins().bottom();
+    int rowCount = 1;
+    int totalHeight = kEmptyRowHeight;
+
+    if (hasActiveQuery()) {
+        rowCount = 1;
+        totalHeight = kAddRowHeight;
+        if (_results.isEmpty()) {
+            ++rowCount;
+            totalHeight += kEmptyRowHeight;
+        } else {
+            rowCount += _results.size();
+            totalHeight += _results.size() * ContactCell::cellHeight();
+        }
+    }
+
+    const int spacing = qMax(0, rowCount - 1) * _layout->spacing();
+    return margins + totalHeight + spacing;
+}
+
+bool SearchPopupWidget::hasActiveQuery() const
+{
+    return !_searchText.isEmpty();
 }
 
 QWidget *SearchPopupWidget::createAddRow()
@@ -170,6 +217,7 @@ QWidget *SearchPopupWidget::createEmptyRow()
 
     auto *label = new QLabel(QStringLiteral("无匹配结果"), row);
     label->setObjectName("searchEmptyLabel");
+    label->setAlignment(Qt::AlignVCenter | Qt::AlignLeft);
     layout->addWidget(label);
 
     return row;
