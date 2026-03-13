@@ -29,6 +29,7 @@ class ChatPage : public QWidget
 public:
     explicit ChatPage(QWidget *parent = nullptr);
     ~ChatPage();
+    void setCurrentUser(int uid, const QString &name);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -88,6 +89,8 @@ private:
     QVBoxLayout *_friendRequestListLayout = nullptr;
     QVector<Conversation> _conversations;
     QVector<FriendRequestItem> _friendRequests;
+    int _currentUserId = 0;
+    QString _currentUserName;
     int _currentConversation = 0;
     int _messageIdSeed = 1000;
     int _friendRequestIdSeed = 2000;

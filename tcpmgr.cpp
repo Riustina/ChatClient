@@ -13,19 +13,24 @@ TcpMgr::TcpMgr()
     , _b_recv_pending(false)
     , _message_id(0)
     , _message_len(0)
+    , _chat_logged_in(false)
 {
-    // ── 连接成功 ──────────────────────────────────
+    // —— 连接成功 ————————————————————————————————————————————————————————
     connect(&_socket, &QTcpSocket::connected, this, [this]() {
         qDebug() << "[TcpMgr] connected: 连接服务器成功";
         emit sig_con_success(true);
     });
 
-    // ── 断开连接 ──────────────────────────────────
+    // —— 断开连接 ————————————————————————————————————————————————————————
     connect(&_socket, &QTcpSocket::disconnected, this, [this]() {
         qDebug() << "[TcpMgr] disconnected: 与服务器断开连接";
+        if (_chat_logged_in) {
+            _chat_logged_in = false;
+            emit sig_server_closed();
+        }
     });
 
-    // ── 错误处理（Qt6 用 errorOccurred）────────────
+    // —— 错误处理（Qt6 用 errorOccurred）———————————————————————————
     connect(&_socket, &QAbstractSocket::errorOccurred, this,
             [this](QAbstractSocket::SocketError err) {
                 qDebug() << "[TcpMgr] errorOccurred:" << _socket.errorString();
@@ -51,7 +56,7 @@ TcpMgr::TcpMgr()
                 }
             });
 
-    // ── 收到数据：处理粘包 ─────────────────────────
+    // —— 收到数据：处理粘包 ———————————————————————————————————————————
     connect(&_socket, &QTcpSocket::readyRead, this, [this]() {
         _buffer.append(_socket.readAll());
 
@@ -91,7 +96,7 @@ TcpMgr::TcpMgr()
         }
     });
 
-    // ── 自身 sig_send_data → slot_send_data ───────
+    // —— 自身 sig_send_data -> slot_send_data ————————————————————————
     // 保证跨线程调用发送时也能回到 TcpMgr 所在线程执行
     connect(this, &TcpMgr::sig_send_data, this, &TcpMgr::slot_send_data);
     initHandlers();
@@ -108,6 +113,7 @@ void TcpMgr::initHandlers()
         QJsonDocument jsonDoc = QJsonDocument::fromJson(data);
         if (jsonDoc.isNull() || !jsonDoc.isObject()) {
             qDebug() << "[TcpMgr] initHandlers JSON 解析失败";
+            _chat_logged_in = false;
             emit sig_login_failed(ErrorCodes::ERR_JSON);
             return;
         }
@@ -117,6 +123,7 @@ void TcpMgr::initHandlers()
         // 2. 检查 error 字段
         if (!jsonObj.contains("error")) {
             qDebug() << "[TcpMgr] initHandlers 回包缺少 error 字段";
+            _chat_logged_in = false;
             emit sig_login_failed(ErrorCodes::ERR_JSON);
             return;
         }
@@ -124,6 +131,7 @@ void TcpMgr::initHandlers()
         int err = jsonObj["error"].toInt();
         if (err != ErrorCodes::SUCCESS) {
             qDebug() << "[TcpMgr] initHandlers 登录失败，error:" << err;
+            _chat_logged_in = false;
             emit sig_login_failed(err);
             return;
         }
@@ -133,6 +141,7 @@ void TcpMgr::initHandlers()
         userMgr.SetUid(jsonObj["uid"].toInt());
         userMgr.SetName(jsonObj["name"].toString());
         userMgr.SetToken(jsonObj["token"].toString());
+        _chat_logged_in = true;
 
         qDebug() << "[TcpMgr] initHandlers 登录成功，uid:" << userMgr.GetUid()
                  << "name:" << userMgr.GetName();
@@ -141,9 +150,9 @@ void TcpMgr::initHandlers()
     };
 }
 
-// ─────────────────────────────────────────────
+// —————————————————————————————————————————————————————————————————————————
 // 连接服务器
-// ─────────────────────────────────────────────
+// —————————————————————————————————————————————————————————————————————————
 void TcpMgr::slot_tcp_connect(ServerInfo si)
 {
     qDebug() << "[TcpMgr] slot_tcp_connect: 正在连接"
@@ -154,11 +163,11 @@ void TcpMgr::slot_tcp_connect(ServerInfo si)
     _socket.connectToHost(_host, _port);
 }
 
-// ─────────────────────────────────────────────
+// —————————————————————————————————————————————————————————————————————————
 // 打包并发送数据
 // 包格式：[msgId: 2字节][msgLen: 2字节][body: N字节]
 // msgLen 是 body 的字节长度（UTF-8）
-// ─────────────────────────────────────────────
+// —————————————————————————————————————————————————————————————————————————
 void TcpMgr::slot_send_data(ReqId reqId, QString data)
 {
     QByteArray body = data.toUtf8(); // 转 UTF-8，正确计算字节长度
@@ -178,9 +187,9 @@ void TcpMgr::slot_send_data(ReqId reqId, QString data)
     _socket.write(packet);
 }
 
-// ─────────────────────────────────────────────
+// —————————————————————————————————————————————————————————————————————————
 // 根据 msgId 派发消息（后续在这里扩展 handler）
-// ─────────────────────────────────────────────
+// —————————————————————————————————————————————————————————————————————————
 void TcpMgr::dispatchMsg(quint16 msgId, const QByteArray& body)
 {
     ReqId id = static_cast<ReqId>(msgId);

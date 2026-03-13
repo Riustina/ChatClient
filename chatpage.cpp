@@ -87,6 +87,12 @@ ChatPage::~ChatPage()
     delete ui;
 }
 
+void ChatPage::setCurrentUser(int uid, const QString &name)
+{
+    _currentUserId = uid;
+    _currentUserName = name;
+}
+
 bool ChatPage::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == ui->searchLineEdit) {
@@ -486,7 +492,7 @@ MessageItem ChatPage::createOutgoingTextMessage(const QString &text)
 {
     MessageItem message;
     message.id = ++_messageIdSeed;
-    message.senderName = QStringLiteral("我");
+    message.senderName = _currentUserName.isEmpty() ? QStringLiteral("我") : _currentUserName;
     message.outgoing = true;
     message.type = ChatMessageType::Text;
     message.text = text;
@@ -499,7 +505,7 @@ MessageItem ChatPage::createOutgoingImageMessage(const QImage &image)
 {
     MessageItem message;
     message.id = ++_messageIdSeed;
-    message.senderName = QStringLiteral("我");
+    message.senderName = _currentUserName.isEmpty() ? QStringLiteral("我") : _currentUserName;
     message.outgoing = true;
     message.type = ChatMessageType::Image;
     message.image = image;

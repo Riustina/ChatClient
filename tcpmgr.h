@@ -30,7 +30,7 @@ signals:
     void sig_send_data(ReqId reqId, QString data);
     void sig_login_failed(int err);
     void sig_switch_chatdlg();
-
+    void sig_server_closed();
 
 private:
     explicit TcpMgr();
@@ -47,6 +47,7 @@ private:
     bool        _b_recv_pending; // 正在等待包体剩余数据
     quint16     _message_id;
     quint16     _message_len;
+    bool        _chat_logged_in;
 
     using MsgHandler = std::function<void(ReqId, int, QByteArray)>;
     QHash<ReqId, MsgHandler> _handlers;   // QHash O(1) 查找
