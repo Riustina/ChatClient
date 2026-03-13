@@ -55,6 +55,7 @@ private:
     void setupNavigation();
     void setupMockData();
     void setupFriendRequestPage();
+    void applyEmptyConversationState();
     void bindConversation(int index);
     void showSearchPopup();
     void hideSearchPopup();

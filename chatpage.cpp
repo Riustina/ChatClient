@@ -78,7 +78,7 @@ ChatPage::ChatPage(QWidget *parent)
     sortConversationsByLatest();
     refreshContactSummaries();
     syncContactList();
-    bindConversation(0);
+    applyEmptyConversationState();
 }
 
 ChatPage::~ChatPage()
@@ -127,6 +127,10 @@ void ChatPage::onContactActivated(int index)
 
 void ChatPage::onSendClicked()
 {
+    if (_conversations.isEmpty() || _currentConversation < 0 || _currentConversation >= _conversations.size()) {
+        return;
+    }
+
     const QImage pastedImage = _chatInputEdit->takePastedImage();
     const QString text = _chatInputEdit->plainTextForSend().trimmed();
     if (text.isEmpty() && pastedImage.isNull()) {
@@ -150,6 +154,10 @@ void ChatPage::onSendClicked()
 
 void ChatPage::onMockReceiveClicked()
 {
+    if (_conversations.isEmpty() || _currentConversation < 0 || _currentConversation >= _conversations.size()) {
+        return;
+    }
+
     _conversations[_currentConversation].messages.push_back(createIncomingMockMessage());
     _currentConversation = moveConversationToFront(_currentConversation);
     refreshContactSummaries();
@@ -315,77 +323,26 @@ void ChatPage::setupNavigation()
 
 void ChatPage::setupMockData()
 {
-    const QStringList names = {
-        QStringLiteral("产品设计组"),
-        QStringLiteral("陈星野"),
-        QStringLiteral("诺拉"),
-        QStringLiteral("项目群"),
-        QStringLiteral("周迢"),
-        QStringLiteral("奥利弗"),
-        QStringLiteral("林明"),
-        QStringLiteral("程云"),
-        QStringLiteral("张艺"),
-        QStringLiteral("沈子衿"),
-        QStringLiteral("李清"),
-        QStringLiteral("郑宁"),
-        QStringLiteral("温雨"),
-        QStringLiteral("何星"),
-        QStringLiteral("蒋景"),
-        QStringLiteral("吴流"),
-        QStringLiteral("杨晨"),
-        QStringLiteral("测试一组")
-    };
-
-    for (int i = 0; i < names.size(); ++i) {
-        Conversation conversation;
-        conversation.contact.id = i + 1;
-        conversation.contact.name = names[i];
-        conversation.contact.avatarColor = avatarColorForIndex(i);
-
-        MessageItem incoming1;
-        incoming1.id = ++_messageIdSeed;
-        incoming1.senderName = names[i];
-        incoming1.outgoing = false;
-        incoming1.type = ChatMessageType::Text;
-        incoming1.text = (i % 2 == 0)
-                         ? QStringLiteral("我先发你一版新的主界面稿，帮我看看信息密度和视觉节奏是否合适。")
-                         : QStringLiteral("今晚我会继续补测试数据，先把主界面的骨架走通。");
-        incoming1.avatarColor = avatarColorForIndex(i);
-        incoming1.timestamp = QDateTime::currentDateTime().addSecs(-(1800 * (i + 2)));
-
-        MessageItem outgoing1;
-        outgoing1.id = ++_messageIdSeed;
-        outgoing1.senderName = QStringLiteral("我");
-        outgoing1.outgoing = true;
-        outgoing1.type = ChatMessageType::Text;
-        outgoing1.text = QStringLiteral("可以，先按这个方向推进，后面再补细节。");
-        outgoing1.avatarColor = QColor("#111827");
-        outgoing1.timestamp = incoming1.timestamp.addSecs(600);
-
-        MessageItem incoming2;
-        incoming2.id = ++_messageIdSeed;
-        incoming2.senderName = names[i];
-        incoming2.outgoing = false;
-        incoming2.type = (i % 4 == 0) ? ChatMessageType::Image : ChatMessageType::Text;
-        incoming2.text = QStringLiteral("我再补一张参考图给你。");
-        incoming2.image = buildMockImage(avatarColorForIndex(i), names[i]);
-        incoming2.avatarColor = avatarColorForIndex(i);
-        incoming2.timestamp = outgoing1.timestamp.addSecs(900);
-
-        conversation.messages = { incoming1, outgoing1, incoming2 };
-        _conversations.push_back(conversation);
-    }
+    _conversations.clear();
+    _currentConversation = 0;
 }
 
 void ChatPage::bindConversation(int index)
 {
     if (index < 0 || index >= _conversations.size()) {
+        applyEmptyConversationState();
         return;
     }
 
     _currentConversation = index;
     ui->chatTitleLabel->setText(_conversations[index].contact.name);
     _messageListWidget->setMessages(_conversations[index].messages);
+}
+
+void ChatPage::applyEmptyConversationState()
+{
+    ui->chatTitleLabel->setText(QStringLiteral("暂无会话"));
+    _messageListWidget->setMessages({});
 }
 
 void ChatPage::showSearchPopup()
@@ -408,7 +365,10 @@ void ChatPage::updateSearchPopup()
 {
     const QString text = ui->searchLineEdit->text().trimmed();
     _searchPopup->setSearchText(text);
-    _searchPopup->setResults(filteredContacts(text), _conversations[_currentConversation].contact.id);
+    const int currentContactId = (_conversations.isEmpty() || _currentConversation < 0 || _currentConversation >= _conversations.size())
+        ? -1
+        : _conversations[_currentConversation].contact.id;
+    _searchPopup->setResults(filteredContacts(text), currentContactId);
 }
 
 QVector<ContactItem> ChatPage::filteredContacts(const QString &text) const
