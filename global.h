@@ -9,6 +9,14 @@ enum ReqId {
     ID_LOGIN_USER = 1004,       // 用户登录
     ID_CHAT_LOGIN = 1005,       // 登录聊天服务器
     ID_CHAT_LOGIN_RSP = 1006,   // 登录聊天服务器回包
+    ID_SEARCH_USER_REQ = 1007,  // 搜索用户
+    ID_SEARCH_USER_RSP = 1008,  // 搜索用户回包
+    ID_ADD_FRIEND_REQ = 1009,   // 发起好友申请
+    ID_ADD_FRIEND_RSP = 1010,   // 发起好友申请回包
+    ID_GET_FRIEND_REQUESTS_REQ = 1011, // 拉取待处理好友申请
+    ID_GET_FRIEND_REQUESTS_RSP = 1012, // 拉取待处理好友申请回包
+    ID_HANDLE_FRIEND_REQUEST_REQ = 1013, // 处理好友申请
+    ID_HANDLE_FRIEND_REQUEST_RSP = 1014, // 处理好友申请回包
 };
 
 enum Modules {

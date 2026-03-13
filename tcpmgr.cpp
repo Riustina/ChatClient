@@ -148,6 +148,43 @@ void TcpMgr::initHandlers()
 
         emit sig_switch_chatdlg(); // 切换到聊天界面
     };
+
+    auto jsonForwarder = [this](ReqId targetId, const QByteArray &data, auto signalEmitter) {
+        QJsonDocument jsonDoc = QJsonDocument::fromJson(data);
+        if (jsonDoc.isNull() || !jsonDoc.isObject()) {
+            qDebug() << "[TcpMgr] initHandlers JSON 解析失败, msgId:" << targetId;
+            return;
+        }
+        signalEmitter(jsonDoc.object());
+    };
+
+    _handlers[ID_SEARCH_USER_RSP] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        jsonForwarder(id, data, [this](const QJsonObject &obj) {
+            emit sig_search_user_rsp(obj);
+        });
+    };
+
+    _handlers[ID_ADD_FRIEND_RSP] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        jsonForwarder(id, data, [this](const QJsonObject &obj) {
+            emit sig_add_friend_rsp(obj);
+        });
+    };
+
+    _handlers[ID_GET_FRIEND_REQUESTS_RSP] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        jsonForwarder(id, data, [this](const QJsonObject &obj) {
+            emit sig_friend_requests_rsp(obj);
+        });
+    };
+
+    _handlers[ID_HANDLE_FRIEND_REQUEST_RSP] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        jsonForwarder(id, data, [this](const QJsonObject &obj) {
+            emit sig_handle_friend_request_rsp(obj);
+        });
+    };
 }
 
 // —————————————————————————————————————————————————————————————————————————

@@ -7,6 +7,7 @@
 #include "friendrequestitemwidget.h"
 #include "messagelistwidget.h"
 #include "searchpopupwidget.h"
+#include "tcpmgr.h"
 
 #include <QApplication>
 #include <QButtonGroup>
@@ -19,6 +20,9 @@
 #include <QPainter>
 #include <QPointer>
 #include <QPushButton>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QRandomGenerator>
 #include <QScrollArea>
 #include <QTimer>
@@ -68,6 +72,7 @@ ChatPage::ChatPage(QWidget *parent)
     , _messageListWidget(new MessageListWidget(this))
     , _chatInputEdit(new ChatInputEdit(this))
     , _searchPopup(new SearchPopupWidget(this))
+    , _friendRequestPollTimer(new QTimer(this))
 {
     ui->setupUi(this);
 
@@ -91,6 +96,12 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
 {
     _currentUserId = uid;
     _currentUserName = name;
+    if (_currentUserId > 0) {
+        requestFriendRequests();
+        _friendRequestPollTimer->start(5000);
+    } else {
+        _friendRequestPollTimer->stop();
+    }
 }
 
 bool ChatPage::eventFilter(QObject *watched, QEvent *event)
@@ -175,6 +186,7 @@ void ChatPage::onImagePasted()
 void ChatPage::onSearchTextChanged(const QString &text)
 {
     Q_UNUSED(text);
+    _searchResults.clear();
     updateSearchPopup();
 }
 
@@ -183,17 +195,16 @@ void ChatPage::onPopupAddFriendClicked(const QString &text)
     hideSearchPopup();
     ui->searchLineEdit->clearFocus();
 
-    const QString targetName = text.trimmed();
-    QPointer<ChatPage> that(this);
-    QTimer::singleShot(0, this, [that, targetName]() {
-        if (!that) {
-            return;
-        }
-        AddFriendDialog dialog(targetName, that);
-        if (dialog.exec() == QDialog::Accepted) {
-            that->addOutgoingFriendRequest(targetName);
-        }
-    });
+    const QString keyword = text.trimmed();
+    if (keyword.isEmpty()) {
+        return;
+    }
+
+    _searchResults.clear();
+    QJsonObject obj;
+    obj["keyword"] = keyword;
+    obj["limit"] = 20;
+    emit TcpMgr::getInstance().sig_send_data(ID_SEARCH_USER_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
 }
 
 void ChatPage::onPopupContactClicked(int contactId)
@@ -202,6 +213,29 @@ void ChatPage::onPopupContactClicked(int contactId)
     if (index >= 0) {
         bindConversation(index);
         syncContactList();
+        hideSearchPopup();
+        return;
+    }
+
+    ContactItem targetContact;
+    for (const ContactItem &item : std::as_const(_searchResults)) {
+        if (item.id == contactId) {
+            targetContact = item;
+            break;
+        }
+    }
+    if (targetContact.id <= 0) {
+        hideSearchPopup();
+        return;
+    }
+
+    _pendingAddFriendTarget = targetContact;
+    AddFriendDialog dialog(targetContact.name, this);
+    if (dialog.exec() == QDialog::Accepted) {
+        QJsonObject obj;
+        obj["to_uid"] = targetContact.id;
+        obj["remark"] = QString();
+        emit TcpMgr::getInstance().sig_send_data(ID_ADD_FRIEND_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
     }
     hideSearchPopup();
 }
@@ -274,6 +308,11 @@ void ChatPage::setupUiExtensions()
     connect(ui->searchLineEdit, &QLineEdit::textChanged, this, &ChatPage::onSearchTextChanged);
     connect(_searchPopup, &SearchPopupWidget::addFriendClicked, this, &ChatPage::onPopupAddFriendClicked);
     connect(_searchPopup, &SearchPopupWidget::contactClicked, this, &ChatPage::onPopupContactClicked);
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_search_user_rsp, this, &ChatPage::onSearchUserRsp);
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_add_friend_rsp, this, &ChatPage::onAddFriendRsp);
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_friend_requests_rsp, this, &ChatPage::onFriendRequestsRsp);
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_handle_friend_request_rsp, this, &ChatPage::onHandleFriendRequestRsp);
+    connect(_friendRequestPollTimer, &QTimer::timeout, this, &ChatPage::requestFriendRequests);
 }
 
 void ChatPage::setupFriendRequestPage()
@@ -282,6 +321,7 @@ void ChatPage::setupFriendRequestPage()
 
     _mockFriendRequestButton = new QPushButton(QStringLiteral("模拟收到申请"), this);
     _mockFriendRequestButton->setObjectName("mockFriendRequestButton");
+    _mockFriendRequestButton->hide();
 
     _friendRequestScrollArea = new QScrollArea(this);
     _friendRequestScrollArea->setObjectName("friendRequestScrollArea");
@@ -373,16 +413,10 @@ void ChatPage::updateSearchPopup()
 
 QVector<ContactItem> ChatPage::filteredContacts(const QString &text) const
 {
-    QVector<ContactItem> results;
     if (text.isEmpty()) {
-        return results;
+        return {};
     }
-    for (const Conversation &conversation : _conversations) {
-        if (conversation.contact.name.contains(text, Qt::CaseInsensitive)) {
-            results.push_back(conversation.contact);
-        }
-    }
-    return results;
+    return _searchResults;
 }
 
 int ChatPage::conversationIndexById(int contactId) const
@@ -523,26 +557,10 @@ void ChatPage::onMockFriendRequestClicked()
 
 void ChatPage::onFriendRequestAccepted(int requestId)
 {
-    const int currentContactId = (_currentConversation >= 0 && _currentConversation < _conversations.size())
-        ? _conversations[_currentConversation].contact.id
-        : -1;
-
-    for (FriendRequestItem &request : _friendRequests) {
-        if (request.id != requestId) {
-            continue;
-        }
-
-        request.state = FriendRequestState::Added;
-        ensureConversationForFriend(request);
-        break;
-    }
-
-    refreshContactSummaries();
-    sortConversationsByLatest();
-    restoreCurrentConversation(currentContactId);
-    syncContactList();
-    bindConversation(_currentConversation);
-    refreshFriendRequestList();
+    QJsonObject obj;
+    obj["request_id"] = requestId;
+    obj["accept"] = true;
+    emit TcpMgr::getInstance().sig_send_data(ID_HANDLE_FRIEND_REQUEST_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
 }
 
 QColor ChatPage::avatarColorForName(const QString &name) const
@@ -575,6 +593,31 @@ void ChatPage::addOutgoingFriendRequest(const QString &name)
     request.avatarColor = avatarColorForName(name);
     request.direction = FriendRequestDirection::Outgoing;
     request.state = existingContactId > 0 ? FriendRequestState::Added : FriendRequestState::Pending;
+    request.createdAt = QDateTime::currentDateTime();
+    _friendRequests.prepend(request);
+    refreshFriendRequestList();
+}
+
+void ChatPage::addOutgoingFriendRequest(const ContactItem &contact)
+{
+    if (contact.id <= 0 || contact.name.isEmpty()) {
+        return;
+    }
+
+    for (const FriendRequestItem &item : _friendRequests) {
+        if (item.contactId == contact.id && item.direction == FriendRequestDirection::Outgoing
+            && item.state == FriendRequestState::Pending) {
+            return;
+        }
+    }
+
+    FriendRequestItem request;
+    request.id = ++_friendRequestIdSeed;
+    request.contactId = contact.id;
+    request.name = contact.name;
+    request.avatarColor = contact.avatarColor;
+    request.direction = FriendRequestDirection::Outgoing;
+    request.state = FriendRequestState::Pending;
     request.createdAt = QDateTime::currentDateTime();
     _friendRequests.prepend(request);
     refreshFriendRequestList();
@@ -619,6 +662,130 @@ void ChatPage::refreshFriendRequestList()
     }
 
     _friendRequestListLayout->addStretch();
+}
+
+void ChatPage::requestFriendRequests()
+{
+    if (_currentUserId <= 0) {
+        return;
+    }
+
+    QJsonObject obj;
+    emit TcpMgr::getInstance().sig_send_data(ID_GET_FRIEND_REQUESTS_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+}
+
+bool ChatPage::resolveAddFriendTarget(const QString &text, ContactItem &contact) const
+{
+    bool ok = false;
+    const int uid = text.toInt(&ok);
+    if (ok) {
+        for (const ContactItem &item : _searchResults) {
+            if (item.id == uid) {
+                contact = item;
+                return true;
+            }
+        }
+    }
+
+    ContactItem exactMatch;
+    int exactCount = 0;
+    for (const ContactItem &item : _searchResults) {
+        if (item.name.compare(text, Qt::CaseInsensitive) == 0) {
+            exactMatch = item;
+            ++exactCount;
+        }
+    }
+
+    if (exactCount == 1) {
+        contact = exactMatch;
+        return true;
+    }
+    return false;
+}
+
+void ChatPage::onSearchUserRsp(const QJsonObject &payload)
+{
+    _searchResults.clear();
+    const QJsonArray users = payload.value("users").toArray();
+    for (const QJsonValue &value : users) {
+        const QJsonObject obj = value.toObject();
+        ContactItem contact;
+        contact.id = obj.value("uid").toInt();
+        contact.name = obj.value("name").toString();
+        contact.avatarColor = avatarColorForName(contact.name.isEmpty() ? QString::number(contact.id) : contact.name);
+        _searchResults.push_back(contact);
+    }
+    updateSearchPopup();
+    showSearchPopup();
+}
+
+void ChatPage::onAddFriendRsp(const QJsonObject &payload)
+{
+    if (payload.value("error").toInt() != 0) {
+        return;
+    }
+    addOutgoingFriendRequest(_pendingAddFriendTarget);
+    _pendingAddFriendTarget = ContactItem{};
+    requestFriendRequests();
+}
+
+void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
+{
+    if (payload.value("error").toInt() != 0) {
+        return;
+    }
+
+    QVector<FriendRequestItem> outgoingRequests;
+    for (const FriendRequestItem &item : std::as_const(_friendRequests)) {
+        if (item.direction == FriendRequestDirection::Outgoing) {
+            outgoingRequests.push_back(item);
+        }
+    }
+
+    _friendRequests = outgoingRequests;
+    const QJsonArray requests = payload.value("requests").toArray();
+    for (const QJsonValue &value : requests) {
+        const QJsonObject obj = value.toObject();
+        FriendRequestItem item;
+        item.id = obj.value("request_id").toInt();
+        item.contactId = obj.value("from_uid").toInt();
+        item.name = obj.value("from_name").toString();
+        item.avatarColor = avatarColorForName(item.name);
+        item.direction = FriendRequestDirection::Incoming;
+        item.state = FriendRequestState::Pending;
+        item.createdAt = QDateTime::currentDateTime();
+        _friendRequests.prepend(item);
+        _friendRequestIdSeed = qMax(_friendRequestIdSeed, item.id);
+    }
+    refreshFriendRequestList();
+}
+
+void ChatPage::onHandleFriendRequestRsp(const QJsonObject &payload)
+{
+    if (payload.value("error").toInt() != 0) {
+        return;
+    }
+
+    const int requestId = payload.value("request_id").toInt();
+    const int currentContactId = (_currentConversation >= 0 && _currentConversation < _conversations.size())
+        ? _conversations[_currentConversation].contact.id
+        : -1;
+
+    for (FriendRequestItem &request : _friendRequests) {
+        if (request.id != requestId) {
+            continue;
+        }
+        request.state = FriendRequestState::Added;
+        ensureConversationForFriend(request);
+        break;
+    }
+
+    refreshContactSummaries();
+    sortConversationsByLatest();
+    restoreCurrentConversation(currentContactId);
+    syncContactList();
+    bindConversation(_currentConversation);
+    refreshFriendRequestList();
 }
 
 void ChatPage::ensureConversationForFriend(FriendRequestItem &item)

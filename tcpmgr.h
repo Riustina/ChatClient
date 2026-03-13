@@ -6,6 +6,7 @@
 #include <QObject>
 #include <QTcpSocket>
 #include <QByteArray>
+#include <QJsonObject>
 #include "Singleton.h"
 #include "global.h"
 
@@ -31,6 +32,10 @@ signals:
     void sig_login_failed(int err);
     void sig_switch_chatdlg();
     void sig_server_closed();
+    void sig_search_user_rsp(const QJsonObject &payload);
+    void sig_add_friend_rsp(const QJsonObject &payload);
+    void sig_friend_requests_rsp(const QJsonObject &payload);
+    void sig_handle_friend_request_rsp(const QJsonObject &payload);
 
 private:
     explicit TcpMgr();

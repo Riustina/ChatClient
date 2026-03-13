@@ -1,6 +1,7 @@
 #ifndef CHATPAGE_H
 #define CHATPAGE_H
 
+#include <QJsonObject>
 #include <QVector>
 #include <QWidget>
 #include "chattypes.h"
@@ -19,6 +20,7 @@ class SearchPopupWidget;
 class QLineEdit;
 class QPushButton;
 class QScrollArea;
+class QTimer;
 class QVBoxLayout;
 class QWidget;
 
@@ -44,6 +46,10 @@ private slots:
     void onPopupContactClicked(int contactId);
     void onMockFriendRequestClicked();
     void onFriendRequestAccepted(int requestId);
+    void onSearchUserRsp(const QJsonObject &payload);
+    void onAddFriendRsp(const QJsonObject &payload);
+    void onFriendRequestsRsp(const QJsonObject &payload);
+    void onHandleFriendRequestRsp(const QJsonObject &payload);
 
 private:
     struct Conversation {
@@ -74,22 +80,28 @@ private:
     QString formatMessageTime(const QDateTime &timestamp) const;
     QColor avatarColorForName(const QString &name) const;
     void addOutgoingFriendRequest(const QString &name);
+    void addOutgoingFriendRequest(const ContactItem &contact);
     void addIncomingFriendRequest(const QString &name);
     void refreshFriendRequestList();
     void ensureConversationForFriend(FriendRequestItem &item);
     void restoreCurrentConversation(int contactId);
+    void requestFriendRequests();
+    bool resolveAddFriendTarget(const QString &text, ContactItem &contact) const;
 
     Ui::ChatPage *ui;
     ContactListWidget *_contactListWidget;
     MessageListWidget *_messageListWidget;
     ChatInputEdit *_chatInputEdit;
     SearchPopupWidget *_searchPopup;
+    QTimer *_friendRequestPollTimer = nullptr;
     QPushButton *_mockFriendRequestButton = nullptr;
     QScrollArea *_friendRequestScrollArea = nullptr;
     QWidget *_friendRequestListWidget = nullptr;
     QVBoxLayout *_friendRequestListLayout = nullptr;
     QVector<Conversation> _conversations;
     QVector<FriendRequestItem> _friendRequests;
+    QVector<ContactItem> _searchResults;
+    ContactItem _pendingAddFriendTarget;
     int _currentUserId = 0;
     QString _currentUserName;
     int _currentConversation = 0;
