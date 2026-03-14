@@ -28,6 +28,7 @@ private:
     QLabel *_avatarLabel;
     QLabel *_nameLabel;
     QLabel *_detailLabel;
+    QLabel *_sourceLabel;
     QLabel *_statusLabel;
     QPushButton *_acceptButton;
     QPushButton *_rejectButton;

@@ -15,6 +15,7 @@
 #include <QEvent>
 #include <QFocusEvent>
 #include <QLineEdit>
+#include <QLabel>
 #include <QLinearGradient>
 #include <QMouseEvent>
 #include <QPainter>
@@ -43,6 +44,9 @@ QColor avatarColorForIndex(int index)
     };
     return colors[index % colors.size()];
 }
+
+const char *kChatNavIconPath = ":/icons/nav_chat.png";
+const char *kFriendRequestNavIconPath = ":/icons/nav_friend_request.png";
 }
 
 ChatPage::ChatPage(QWidget *parent)
@@ -76,6 +80,9 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
 {
     _currentUserId = uid;
     _currentUserName = name;
+    _knownPendingIncomingRequestIds.clear();
+    _hasUnreadFriendRequestNotification = false;
+    updateFriendRequestBadge();
     if (_currentUserId > 0) {
         requestFriendRequests();
         _friendRequestPollTimer->start(5000);
@@ -227,8 +234,7 @@ void ChatPage::setupUiExtensions()
     ui->messageListLayout->addWidget(_messageListWidget);
     ui->inputLayout->addWidget(_chatInputEdit);
 
-    ui->chatNavButton->setIcon(style()->standardIcon(QStyle::SP_FileDialogDetailedView));
-    ui->friendRequestNavButton->setIcon(style()->standardIcon(QStyle::SP_DialogApplyButton));
+    updateNavigationIcons();
     ui->navFrame->setFixedWidth(52);
     ui->contactFrame->setFixedWidth(255);
     ui->chatNavButton->setIconSize(QSize(18, 18));
@@ -241,6 +247,12 @@ void ChatPage::setupUiExtensions()
     ui->navLayout->setAlignment(ui->friendRequestNavButton, Qt::AlignHCenter);
     ui->composerFrame->setMinimumHeight(165);
     ui->composerFrame->setMaximumHeight(195);
+
+    _friendRequestBadgeLabel = new QLabel(ui->friendRequestNavButton);
+    _friendRequestBadgeLabel->setFixedSize(8, 8);
+    _friendRequestBadgeLabel->move(ui->friendRequestNavButton->width() - 10, 2);
+    _friendRequestBadgeLabel->setStyleSheet("background:#ef4444; border-radius:4px;");
+    _friendRequestBadgeLabel->hide();
 
     setStyleSheet(
         "ChatPage { background:#F4F3F9; }"
@@ -336,6 +348,10 @@ void ChatPage::setupNavigation()
 
     connect(group, &QButtonGroup::idClicked, this, [this](int id) {
         ui->rightStackedWidget->setCurrentIndex(id == 0 ? 0 : 1);
+        if (id == 1) {
+            _hasUnreadFriendRequestNotification = false;
+            updateFriendRequestBadge();
+        }
     });
 
     ui->chatNavButton->setChecked(true);
@@ -728,6 +744,7 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
     }
 
     _friendRequests.clear();
+    QSet<int> currentPendingIncomingIds;
     const QJsonArray requests = payload.value("requests").toArray();
     for (const QJsonValue &value : requests) {
         const QJsonObject obj = value.toObject();
@@ -749,10 +766,26 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
         } else {
             item.state = FriendRequestState::Pending;
         }
+        if (!outgoing && item.state == FriendRequestState::Pending) {
+            currentPendingIncomingIds.insert(item.id);
+        }
         item.createdAt = QDateTime::currentDateTime();
         _friendRequests.push_back(item);
         _friendRequestIdSeed = qMax(_friendRequestIdSeed, item.id);
     }
+
+    if (ui->rightStackedWidget->currentIndex() != 1) {
+        for (int requestId : currentPendingIncomingIds) {
+            if (!_knownPendingIncomingRequestIds.contains(requestId)) {
+                _hasUnreadFriendRequestNotification = true;
+                break;
+            }
+        }
+    } else {
+        _hasUnreadFriendRequestNotification = false;
+    }
+    _knownPendingIncomingRequestIds = currentPendingIncomingIds;
+    updateFriendRequestBadge();
     refreshFriendRequestList();
 }
 
@@ -840,4 +873,22 @@ void ChatPage::restoreCurrentConversation(int contactId)
     }
 
     _currentConversation = qBound(0, _currentConversation, qMax(0, _conversations.size() - 1));
+}
+
+void ChatPage::updateNavigationIcons()
+{
+    const QIcon chatIcon = QIcon(QString::fromLatin1(kChatNavIconPath));
+    const QIcon requestIcon = QIcon(QString::fromLatin1(kFriendRequestNavIconPath));
+
+    ui->chatNavButton->setIcon(chatIcon.isNull() ? style()->standardIcon(QStyle::SP_FileDialogDetailedView) : chatIcon);
+    ui->friendRequestNavButton->setIcon(requestIcon.isNull() ? style()->standardIcon(QStyle::SP_DialogApplyButton) : requestIcon);
+}
+
+void ChatPage::updateFriendRequestBadge()
+{
+    if (_friendRequestBadgeLabel == nullptr) {
+        return;
+    }
+    _friendRequestBadgeLabel->setVisible(_hasUnreadFriendRequestNotification);
+    _friendRequestBadgeLabel->raise();
 }

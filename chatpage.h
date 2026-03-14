@@ -2,6 +2,7 @@
 #define CHATPAGE_H
 
 #include <QJsonObject>
+#include <QSet>
 #include <QVector>
 #include <QWidget>
 #include "chattypes.h"
@@ -18,6 +19,7 @@ class FriendRequestItemWidget;
 class MessageListWidget;
 class SearchPopupWidget;
 class QLineEdit;
+class QLabel;
 class QPushButton;
 class QScrollArea;
 class QTimer;
@@ -88,6 +90,8 @@ private:
     void restoreCurrentConversation(int contactId);
     void requestFriendRequests();
     bool resolveAddFriendTarget(const QString &text, ContactItem &contact) const;
+    void updateNavigationIcons();
+    void updateFriendRequestBadge();
 
     Ui::ChatPage *ui;
     ContactListWidget *_contactListWidget;
@@ -102,8 +106,11 @@ private:
     QVector<Conversation> _conversations;
     QVector<FriendRequestItem> _friendRequests;
     QVector<ContactItem> _searchResults;
+    QSet<int> _knownPendingIncomingRequestIds;
     ContactItem _pendingAddFriendTarget;
     QString _pendingAddFriendRemark;
+    QLabel *_friendRequestBadgeLabel = nullptr;
+    bool _hasUnreadFriendRequestNotification = false;
     int _currentUserId = 0;
     QString _currentUserName;
     int _currentConversation = 0;

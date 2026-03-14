@@ -35,12 +35,13 @@ FriendRequestItemWidget::FriendRequestItemWidget(QWidget *parent)
     , _avatarLabel(new QLabel(this))
     , _nameLabel(new QLabel(this))
     , _detailLabel(new QLabel(this))
+    , _sourceLabel(new QLabel(this))
     , _statusLabel(new QLabel(this))
     , _acceptButton(new QPushButton(QStringLiteral("同意"), this))
     , _rejectButton(new QPushButton(QStringLiteral("拒绝"), this))
 {
     setAttribute(Qt::WA_StyledBackground, true);
-    setFixedHeight(82);
+    setFixedHeight(86);
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
 
     auto *rootLayout = new QHBoxLayout(this);
@@ -49,10 +50,17 @@ FriendRequestItemWidget::FriendRequestItemWidget(QWidget *parent)
 
     _avatarLabel->setFixedSize(42, 42);
 
+    auto *nameRow = new QHBoxLayout;
+    nameRow->setContentsMargins(0, 0, 0, 0);
+    nameRow->setSpacing(8);
+    nameRow->addWidget(_nameLabel, 0, Qt::AlignVCenter);
+    nameRow->addWidget(_sourceLabel, 0, Qt::AlignVCenter);
+    nameRow->addStretch();
+
     auto *textLayout = new QVBoxLayout;
     textLayout->setContentsMargins(0, 0, 0, 0);
-    textLayout->setSpacing(3);
-    textLayout->addWidget(_nameLabel);
+    textLayout->setSpacing(4);
+    textLayout->addLayout(nameRow);
     textLayout->addWidget(_detailLabel);
 
     auto *buttonRow = new QHBoxLayout;
@@ -84,6 +92,9 @@ void FriendRequestItemWidget::setRequestItem(const FriendRequestItem &item)
 {
     _requestId = item.id;
     _nameLabel->setText(item.name);
+    _sourceLabel->setText(item.direction == FriendRequestDirection::Outgoing
+                              ? QStringLiteral("我发起")
+                              : QStringLiteral("我收到"));
     _detailLabel->setText(QStringLiteral("备注：%1").arg(item.remark.trimmed().isEmpty() ? QStringLiteral("无") : item.remark.trimmed()));
 
     const bool pendingIncoming = item.direction == FriendRequestDirection::Incoming && item.state == FriendRequestState::Pending;
@@ -123,6 +134,11 @@ void FriendRequestItemWidget::updateStyles(const FriendRequestItem &item)
     _nameLabel->setStyleSheet("color:#111827;");
     _detailLabel->setStyleSheet("color:#64748b;");
     _detailLabel->setWordWrap(true);
+
+    _sourceLabel->setStyleSheet(
+        item.direction == FriendRequestDirection::Outgoing
+            ? "background:#ece8ff; color:#5b4fb4; border-radius:9px; padding:2px 8px;"
+            : "background:#e7f0ff; color:#2f5f9d; border-radius:9px; padding:2px 8px;");
 
     QString statusStyle;
     if (item.state == FriendRequestState::Pending) {

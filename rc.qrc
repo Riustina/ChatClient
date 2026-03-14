@@ -1,1 +1,6 @@
-<RCC/>
+<RCC>
+    <qresource prefix="/">
+        <file>icons/nav_chat.png</file>
+        <file>icons/nav_friend_request.png</file>
+    </qresource>
+</RCC>
