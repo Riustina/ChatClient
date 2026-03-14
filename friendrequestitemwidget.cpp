@@ -76,18 +76,26 @@ void FriendRequestItemWidget::setRequestItem(const FriendRequestItem &item)
     _nameLabel->setText(item.name);
 
     if (item.direction == FriendRequestDirection::Outgoing) {
-        _detailLabel->setText(QStringLiteral("你已向对方发送好友申请"));
+        _detailLabel->setText(item.state == FriendRequestState::Rejected
+                              ? QStringLiteral("对方已拒绝你的好友申请")
+                              : QStringLiteral("你已向对方发送好友申请"));
     } else if (item.state == FriendRequestState::Pending) {
         _detailLabel->setText(QStringLiteral("对方向你发送了好友申请"));
+    } else if (item.state == FriendRequestState::Rejected) {
+        _detailLabel->setText(QStringLiteral("你已拒绝该好友申请"));
     } else {
         _detailLabel->setText(QStringLiteral("你们已经是好友"));
     }
 
-    _statusLabel->setVisible(item.direction == FriendRequestDirection::Outgoing || item.state == FriendRequestState::Added);
+    _statusLabel->setVisible(item.direction == FriendRequestDirection::Outgoing || item.state != FriendRequestState::Pending);
     _acceptButton->setVisible(item.direction == FriendRequestDirection::Incoming && item.state == FriendRequestState::Pending);
-    _statusLabel->setText(item.state == FriendRequestState::Pending
-                          ? QStringLiteral("待验证")
-                          : QStringLiteral("已添加"));
+    if (item.state == FriendRequestState::Pending) {
+        _statusLabel->setText(QStringLiteral("待验证"));
+    } else if (item.state == FriendRequestState::Rejected) {
+        _statusLabel->setText(QStringLiteral("已拒绝"));
+    } else {
+        _statusLabel->setText(QStringLiteral("已添加"));
+    }
 
     updateAvatar(item);
     updateStyles(item);
@@ -113,9 +121,14 @@ void FriendRequestItemWidget::updateStyles(const FriendRequestItem &item)
     _nameLabel->setStyleSheet("color:#111827;");
     _detailLabel->setStyleSheet("color:#64748b;");
 
-    const QString statusStyle = item.state == FriendRequestState::Pending
-        ? "background:#efe9f7; color:#6b4fa0; border-radius:10px; padding:4px 10px;"
-        : "background:#e5ece7; color:#2f6b41; border-radius:10px; padding:4px 10px;";
+    QString statusStyle;
+    if (item.state == FriendRequestState::Pending) {
+        statusStyle = "background:#efe9f7; color:#6b4fa0; border-radius:10px; padding:4px 10px;";
+    } else if (item.state == FriendRequestState::Rejected) {
+        statusStyle = "background:#f3e8e8; color:#9a4545; border-radius:10px; padding:4px 10px;";
+    } else {
+        statusStyle = "background:#e5ece7; color:#2f6b41; border-radius:10px; padding:4px 10px;";
+    }
     _statusLabel->setStyleSheet(statusStyle);
     _acceptButton->setStyleSheet("background:#CBCACF; color:#111827;");
 }

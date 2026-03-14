@@ -18,7 +18,8 @@ enum class FriendRequestDirection {
 
 enum class FriendRequestState {
     Pending,
-    Added
+    Added,
+    Rejected
 };
 
 struct ContactItem {

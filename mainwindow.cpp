@@ -1,4 +1,4 @@
-#include "mainwindow.h"
+﻿#include "mainwindow.h"
 #include "ui_mainwindow.h"
 #include "tcpmgr.h"
 #include "usermgr.h"
@@ -47,11 +47,13 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_switch_chatdlg, this, [this]() {
         _chatPage->setCurrentUser(UserMgr::getInstance().GetUid(),
                                   UserMgr::getInstance().GetName());
+        setWindowTitle(UserMgr::getInstance().GetName());
         _stackedWidget->setCurrentWidget(_chatPage);
     });
 
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_server_closed, this, [this]() {
         QMessageBox::warning(this, "连接断开", "聊天服务器已关闭或连接已断开，请重新登录。", QMessageBox::Ok);
+        setWindowTitle("Chat Client");
         _stackedWidget->setCurrentWidget(_loginDialog);
     });
 }

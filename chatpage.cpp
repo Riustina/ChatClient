@@ -735,26 +735,29 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
         return;
     }
 
-    QVector<FriendRequestItem> outgoingRequests;
-    for (const FriendRequestItem &item : std::as_const(_friendRequests)) {
-        if (item.direction == FriendRequestDirection::Outgoing) {
-            outgoingRequests.push_back(item);
-        }
-    }
-
-    _friendRequests = outgoingRequests;
+    _friendRequests.clear();
     const QJsonArray requests = payload.value("requests").toArray();
     for (const QJsonValue &value : requests) {
         const QJsonObject obj = value.toObject();
         FriendRequestItem item;
         item.id = obj.value("request_id").toInt();
-        item.contactId = obj.value("from_uid").toInt();
-        item.name = obj.value("from_name").toString();
+        const int fromUid = obj.value("from_uid").toInt();
+        const int toUid = obj.value("to_uid").toInt();
+        const QString status = obj.value("status").toString();
+        const bool outgoing = fromUid == _currentUserId;
+        item.contactId = outgoing ? toUid : fromUid;
+        item.name = outgoing ? obj.value("to_name").toString() : obj.value("from_name").toString();
         item.avatarColor = avatarColorForName(item.name);
-        item.direction = FriendRequestDirection::Incoming;
-        item.state = FriendRequestState::Pending;
+        item.direction = outgoing ? FriendRequestDirection::Outgoing : FriendRequestDirection::Incoming;
+        if (status == QStringLiteral("accepted")) {
+            item.state = FriendRequestState::Added;
+        } else if (status == QStringLiteral("rejected")) {
+            item.state = FriendRequestState::Rejected;
+        } else {
+            item.state = FriendRequestState::Pending;
+        }
         item.createdAt = QDateTime::currentDateTime();
-        _friendRequests.prepend(item);
+        _friendRequests.push_back(item);
         _friendRequestIdSeed = qMax(_friendRequestIdSeed, item.id);
     }
     refreshFriendRequestList();
@@ -786,6 +789,7 @@ void ChatPage::onHandleFriendRequestRsp(const QJsonObject &payload)
     syncContactList();
     bindConversation(_currentConversation);
     refreshFriendRequestList();
+    requestFriendRequests();
 }
 
 void ChatPage::ensureConversationForFriend(FriendRequestItem &item)
