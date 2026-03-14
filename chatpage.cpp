@@ -18,6 +18,7 @@
 #include <QLabel>
 #include <QLinearGradient>
 #include <QMouseEvent>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPointer>
 #include <QPushButton>
@@ -214,6 +215,24 @@ void ChatPage::onPopupContactClicked(int contactId)
     if (targetContact.id <= 0) {
         hideSearchPopup();
         return;
+    }
+
+    for (const FriendRequestItem &request : std::as_const(_friendRequests)) {
+        if (request.contactId != targetContact.id) {
+            continue;
+        }
+
+        if (request.state == FriendRequestState::Added) {
+            QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("你们已经是好友了。"));
+            hideSearchPopup();
+            return;
+        }
+
+        if (request.state == FriendRequestState::Pending) {
+            QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("你已经向对方发送过好友申请，请等待处理。"));
+            hideSearchPopup();
+            return;
+        }
     }
 
     _pendingAddFriendTarget = targetContact;
@@ -729,6 +748,9 @@ void ChatPage::onSearchUserRsp(const QJsonObject &payload)
 void ChatPage::onAddFriendRsp(const QJsonObject &payload)
 {
     if (payload.value("error").toInt() != 0) {
+        QMessageBox::warning(this, QStringLiteral("添加好友失败"), QStringLiteral("当前无法发送好友申请，可能已经发送过申请或你们已经是好友。"));
+        _pendingAddFriendTarget = ContactItem{};
+        _pendingAddFriendRemark.clear();
         return;
     }
     addOutgoingFriendRequest(_pendingAddFriendTarget, _pendingAddFriendRemark);

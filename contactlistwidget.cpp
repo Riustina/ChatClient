@@ -8,6 +8,8 @@ ContactListWidget::ContactListWidget(QWidget *parent)
     : QScrollArea(parent)
     , _contentWidget(new QWidget(this))
 {
+    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
+    setMinimumHeight(0);
     setWidget(_contentWidget);
     setWidgetResizable(false);
     setFrameShape(QFrame::NoFrame);
