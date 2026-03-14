@@ -45,6 +45,7 @@ struct FriendRequestItem {
     int id = 0;
     int contactId = 0;
     QString name;
+    QString remark;
     QColor avatarColor;
     FriendRequestDirection direction = FriendRequestDirection::Outgoing;
     FriendRequestState state = FriendRequestState::Pending;

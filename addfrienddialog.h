@@ -4,6 +4,7 @@
 #include <QDialog>
 
 class QLabel;
+class QLineEdit;
 class QPushButton;
 
 class AddFriendDialog : public QDialog
@@ -12,9 +13,11 @@ class AddFriendDialog : public QDialog
 
 public:
     explicit AddFriendDialog(const QString &name, QWidget *parent = nullptr);
+    QString remark() const;
 
 private:
     QLabel *_messageLabel;
+    QLineEdit *_remarkEdit;
     QPushButton *_confirmButton;
     QPushButton *_cancelButton;
 };

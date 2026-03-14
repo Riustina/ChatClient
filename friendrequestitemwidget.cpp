@@ -37,6 +37,7 @@ FriendRequestItemWidget::FriendRequestItemWidget(QWidget *parent)
     , _detailLabel(new QLabel(this))
     , _statusLabel(new QLabel(this))
     , _acceptButton(new QPushButton(QStringLiteral("同意"), this))
+    , _rejectButton(new QPushButton(QStringLiteral("拒绝"), this))
 {
     setAttribute(Qt::WA_StyledBackground, true);
     setFixedHeight(82);
@@ -54,11 +55,17 @@ FriendRequestItemWidget::FriendRequestItemWidget(QWidget *parent)
     textLayout->addWidget(_nameLabel);
     textLayout->addWidget(_detailLabel);
 
+    auto *buttonRow = new QHBoxLayout;
+    buttonRow->setContentsMargins(0, 0, 0, 0);
+    buttonRow->setSpacing(8);
+    buttonRow->addWidget(_rejectButton);
+    buttonRow->addWidget(_acceptButton);
+
     auto *rightLayout = new QVBoxLayout;
     rightLayout->setContentsMargins(0, 0, 0, 0);
     rightLayout->setSpacing(6);
     rightLayout->addWidget(_statusLabel, 0, Qt::AlignRight);
-    rightLayout->addWidget(_acceptButton, 0, Qt::AlignRight);
+    rightLayout->addLayout(buttonRow);
     rightLayout->addStretch();
 
     rootLayout->addWidget(_avatarLabel, 0, Qt::AlignTop);
@@ -68,27 +75,22 @@ FriendRequestItemWidget::FriendRequestItemWidget(QWidget *parent)
     connect(_acceptButton, &QPushButton::clicked, this, [this]() {
         emit acceptClicked(_requestId);
     });
+    connect(_rejectButton, &QPushButton::clicked, this, [this]() {
+        emit rejectClicked(_requestId);
+    });
 }
 
 void FriendRequestItemWidget::setRequestItem(const FriendRequestItem &item)
 {
     _requestId = item.id;
     _nameLabel->setText(item.name);
+    _detailLabel->setText(QStringLiteral("备注：%1").arg(item.remark.trimmed().isEmpty() ? QStringLiteral("无") : item.remark.trimmed()));
 
-    if (item.direction == FriendRequestDirection::Outgoing) {
-        _detailLabel->setText(item.state == FriendRequestState::Rejected
-                              ? QStringLiteral("对方已拒绝你的好友申请")
-                              : QStringLiteral("你已向对方发送好友申请"));
-    } else if (item.state == FriendRequestState::Pending) {
-        _detailLabel->setText(QStringLiteral("对方向你发送了好友申请"));
-    } else if (item.state == FriendRequestState::Rejected) {
-        _detailLabel->setText(QStringLiteral("你已拒绝该好友申请"));
-    } else {
-        _detailLabel->setText(QStringLiteral("你们已经是好友"));
-    }
-
+    const bool pendingIncoming = item.direction == FriendRequestDirection::Incoming && item.state == FriendRequestState::Pending;
     _statusLabel->setVisible(item.direction == FriendRequestDirection::Outgoing || item.state != FriendRequestState::Pending);
-    _acceptButton->setVisible(item.direction == FriendRequestDirection::Incoming && item.state == FriendRequestState::Pending);
+    _acceptButton->setVisible(pendingIncoming);
+    _rejectButton->setVisible(pendingIncoming);
+
     if (item.state == FriendRequestState::Pending) {
         _statusLabel->setText(QStringLiteral("待验证"));
     } else if (item.state == FriendRequestState::Rejected) {
@@ -120,6 +122,7 @@ void FriendRequestItemWidget::updateStyles(const FriendRequestItem &item)
     _nameLabel->setFont(titleFont);
     _nameLabel->setStyleSheet("color:#111827;");
     _detailLabel->setStyleSheet("color:#64748b;");
+    _detailLabel->setWordWrap(true);
 
     QString statusStyle;
     if (item.state == FriendRequestState::Pending) {
@@ -131,4 +134,5 @@ void FriendRequestItemWidget::updateStyles(const FriendRequestItem &item)
     }
     _statusLabel->setStyleSheet(statusStyle);
     _acceptButton->setStyleSheet("background:#CBCACF; color:#111827;");
+    _rejectButton->setStyleSheet("background:#EAE9EF; color:#334155;");
 }

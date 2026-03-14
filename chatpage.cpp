@@ -43,26 +43,6 @@ QColor avatarColorForIndex(int index)
     };
     return colors[index % colors.size()];
 }
-
-QImage buildMockImage(const QColor &baseColor, const QString &text)
-{
-    QImage image(320, 180, QImage::Format_ARGB32_Premultiplied);
-    image.fill(Qt::transparent);
-
-    QPainter painter(&image);
-    painter.setRenderHint(QPainter::Antialiasing, true);
-    QLinearGradient gradient(0, 0, image.width(), image.height());
-    gradient.setColorAt(0.0, baseColor.lighter(130));
-    gradient.setColorAt(1.0, baseColor.darker(110));
-    painter.setBrush(gradient);
-    painter.setPen(Qt::NoPen);
-    painter.drawRoundedRect(image.rect(), 22, 22);
-
-    painter.setPen(Qt::white);
-    painter.setFont(QFont("Microsoft YaHei UI", 22, QFont::DemiBold));
-    painter.drawText(image.rect().adjusted(22, 22, -22, -22), Qt::AlignCenter, text);
-    return image;
-}
 }
 
 ChatPage::ChatPage(QWidget *parent)
@@ -232,9 +212,10 @@ void ChatPage::onPopupContactClicked(int contactId)
     _pendingAddFriendTarget = targetContact;
     AddFriendDialog dialog(targetContact.name, this);
     if (dialog.exec() == QDialog::Accepted) {
+        _pendingAddFriendRemark = dialog.remark();
         QJsonObject obj;
         obj["to_uid"] = targetContact.id;
-        obj["remark"] = QString();
+        obj["remark"] = _pendingAddFriendRemark;
         emit TcpMgr::getInstance().sig_send_data(ID_ADD_FRIEND_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
     }
     hideSearchPopup();
@@ -563,6 +544,14 @@ void ChatPage::onFriendRequestAccepted(int requestId)
     emit TcpMgr::getInstance().sig_send_data(ID_HANDLE_FRIEND_REQUEST_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
 }
 
+void ChatPage::onFriendRequestRejected(int requestId)
+{
+    QJsonObject obj;
+    obj["request_id"] = requestId;
+    obj["accept"] = false;
+    emit TcpMgr::getInstance().sig_send_data(ID_HANDLE_FRIEND_REQUEST_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+}
+
 QColor ChatPage::avatarColorForName(const QString &name) const
 {
     int seed = 0;
@@ -598,7 +587,7 @@ void ChatPage::addOutgoingFriendRequest(const QString &name)
     refreshFriendRequestList();
 }
 
-void ChatPage::addOutgoingFriendRequest(const ContactItem &contact)
+void ChatPage::addOutgoingFriendRequest(const ContactItem &contact, const QString &remark)
 {
     if (contact.id <= 0 || contact.name.isEmpty()) {
         return;
@@ -615,6 +604,7 @@ void ChatPage::addOutgoingFriendRequest(const ContactItem &contact)
     request.id = ++_friendRequestIdSeed;
     request.contactId = contact.id;
     request.name = contact.name;
+    request.remark = remark.trimmed();
     request.avatarColor = contact.avatarColor;
     request.direction = FriendRequestDirection::Outgoing;
     request.state = FriendRequestState::Pending;
@@ -658,6 +648,7 @@ void ChatPage::refreshFriendRequestList()
         auto *itemWidget = new FriendRequestItemWidget(_friendRequestListWidget);
         itemWidget->setRequestItem(request);
         connect(itemWidget, &FriendRequestItemWidget::acceptClicked, this, &ChatPage::onFriendRequestAccepted);
+        connect(itemWidget, &FriendRequestItemWidget::rejectClicked, this, &ChatPage::onFriendRequestRejected);
         _friendRequestListLayout->addWidget(itemWidget);
     }
 
@@ -724,8 +715,9 @@ void ChatPage::onAddFriendRsp(const QJsonObject &payload)
     if (payload.value("error").toInt() != 0) {
         return;
     }
-    addOutgoingFriendRequest(_pendingAddFriendTarget);
+    addOutgoingFriendRequest(_pendingAddFriendTarget, _pendingAddFriendRemark);
     _pendingAddFriendTarget = ContactItem{};
+    _pendingAddFriendRemark.clear();
     requestFriendRequests();
 }
 
@@ -747,6 +739,7 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
         const bool outgoing = fromUid == _currentUserId;
         item.contactId = outgoing ? toUid : fromUid;
         item.name = outgoing ? obj.value("to_name").toString() : obj.value("from_name").toString();
+        item.remark = obj.value("remark").toString();
         item.avatarColor = avatarColorForName(item.name);
         item.direction = outgoing ? FriendRequestDirection::Outgoing : FriendRequestDirection::Incoming;
         if (status == QStringLiteral("accepted")) {
@@ -778,16 +771,23 @@ void ChatPage::onHandleFriendRequestRsp(const QJsonObject &payload)
         if (request.id != requestId) {
             continue;
         }
-        request.state = FriendRequestState::Added;
-        ensureConversationForFriend(request);
+        request.state = payload.value("accept").toBool() ? FriendRequestState::Added : FriendRequestState::Rejected;
+        if (request.state == FriendRequestState::Added) {
+            ensureConversationForFriend(request);
+        }
         break;
     }
 
     refreshContactSummaries();
-    sortConversationsByLatest();
-    restoreCurrentConversation(currentContactId);
-    syncContactList();
-    bindConversation(_currentConversation);
+    if (!_conversations.isEmpty()) {
+        sortConversationsByLatest();
+        restoreCurrentConversation(currentContactId);
+        syncContactList();
+        bindConversation(_currentConversation);
+    } else {
+        syncContactList();
+        applyEmptyConversationState();
+    }
     refreshFriendRequestList();
     requestFriendRequests();
 }

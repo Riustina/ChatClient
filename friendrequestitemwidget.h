@@ -18,6 +18,7 @@ public:
 
 signals:
     void acceptClicked(int requestId);
+    void rejectClicked(int requestId);
 
 private:
     void updateAvatar(const FriendRequestItem &item);
@@ -29,6 +30,7 @@ private:
     QLabel *_detailLabel;
     QLabel *_statusLabel;
     QPushButton *_acceptButton;
+    QPushButton *_rejectButton;
 };
 
 #endif // FRIENDREQUESTITEMWIDGET_H

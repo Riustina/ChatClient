@@ -46,6 +46,7 @@ private slots:
     void onPopupContactClicked(int contactId);
     void onMockFriendRequestClicked();
     void onFriendRequestAccepted(int requestId);
+    void onFriendRequestRejected(int requestId);
     void onSearchUserRsp(const QJsonObject &payload);
     void onAddFriendRsp(const QJsonObject &payload);
     void onFriendRequestsRsp(const QJsonObject &payload);
@@ -80,7 +81,7 @@ private:
     QString formatMessageTime(const QDateTime &timestamp) const;
     QColor avatarColorForName(const QString &name) const;
     void addOutgoingFriendRequest(const QString &name);
-    void addOutgoingFriendRequest(const ContactItem &contact);
+    void addOutgoingFriendRequest(const ContactItem &contact, const QString &remark = QString());
     void addIncomingFriendRequest(const QString &name);
     void refreshFriendRequestList();
     void ensureConversationForFriend(FriendRequestItem &item);
@@ -102,6 +103,7 @@ private:
     QVector<FriendRequestItem> _friendRequests;
     QVector<ContactItem> _searchResults;
     ContactItem _pendingAddFriendTarget;
+    QString _pendingAddFriendRemark;
     int _currentUserId = 0;
     QString _currentUserName;
     int _currentConversation = 0;
