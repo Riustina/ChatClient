@@ -35,6 +35,9 @@ public:
     ~ChatPage();
     void setCurrentUser(int uid, const QString &name);
 
+signals:
+    void friendRequestNotificationChanged(bool hasUnread);
+
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 

@@ -2,7 +2,12 @@
 #include "ui_mainwindow.h"
 #include "tcpmgr.h"
 #include "usermgr.h"
+#include <QEvent>
 #include <QMessageBox>
+
+#ifdef Q_OS_WIN
+#include <qt_windows.h>
+#endif
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -53,8 +58,13 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_server_closed, this, [this]() {
         QMessageBox::warning(this, "连接断开", "聊天服务器已关闭或连接已断开，请重新登录。", QMessageBox::Ok);
+        setFriendRequestTaskbarFlash(false);
         setWindowTitle("Chat Client");
         _stackedWidget->setCurrentWidget(_loginDialog);
+    });
+
+    connect(_chatPage, &ChatPage::friendRequestNotificationChanged, this, [this](bool hasUnread) {
+        setFriendRequestTaskbarFlash(hasUnread);
     });
 }
 
@@ -62,4 +72,28 @@ MainWindow::~MainWindow()
 {
     delete ui;
 
+}
+
+bool MainWindow::event(QEvent *event)
+{
+    if (event->type() == QEvent::WindowActivate && _friendRequestFlashActive) {
+        setFriendRequestTaskbarFlash(false);
+    }
+    return QMainWindow::event(event);
+}
+
+void MainWindow::setFriendRequestTaskbarFlash(bool enabled)
+{
+    _friendRequestFlashActive = enabled;
+#ifdef Q_OS_WIN
+    FLASHWINFO info;
+    info.cbSize = sizeof(FLASHWINFO);
+    info.hwnd = reinterpret_cast<HWND>(winId());
+    info.dwFlags = enabled ? (FLASHW_TRAY | FLASHW_TIMERNOFG) : FLASHW_STOP;
+    info.uCount = enabled ? 0 : 0;
+    info.dwTimeout = 0;
+    FlashWindowEx(&info);
+#else
+    Q_UNUSED(enabled);
+#endif
 }

@@ -22,12 +22,18 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+protected:
+    bool event(QEvent *event) override;
+
 private:
+    void setFriendRequestTaskbarFlash(bool enabled);
+
     Ui::MainWindow *ui;
     QStackedWidget *_stackedWidget;
     ChatPage *_chatPage;
     LoginDialog *_loginDialog;
     RegisterDialog *_registerDialog;
     ResetDialog *_resetDialog;
+    bool _friendRequestFlashActive = false;
 };
 #endif // MAINWINDOW_H

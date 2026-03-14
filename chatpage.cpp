@@ -84,6 +84,7 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
     _knownPendingIncomingRequestIds.clear();
     _hasUnreadFriendRequestNotification = false;
     updateFriendRequestBadge();
+    emit friendRequestNotificationChanged(false);
     if (_currentUserId > 0) {
         requestFriendRequests();
         _friendRequestPollTimer->start(5000);
@@ -370,6 +371,7 @@ void ChatPage::setupNavigation()
         if (id == 1) {
             _hasUnreadFriendRequestNotification = false;
             updateFriendRequestBadge();
+            emit friendRequestNotificationChanged(false);
         }
     });
 
@@ -748,12 +750,15 @@ void ChatPage::onSearchUserRsp(const QJsonObject &payload)
 void ChatPage::onAddFriendRsp(const QJsonObject &payload)
 {
     if (payload.value("error").toInt() != 0) {
-        QMessageBox::warning(this, QStringLiteral("添加好友失败"), QStringLiteral("当前无法发送好友申请，可能已经发送过申请或你们已经是好友。"));
+        const QString message = payload.value("message").toString().trimmed();
+        QMessageBox::warning(this,
+                             QStringLiteral("添加好友失败"),
+                             message.isEmpty() ? QStringLiteral("当前无法发送好友申请，请稍后再试。") : message);
         _pendingAddFriendTarget = ContactItem{};
         _pendingAddFriendRemark.clear();
         return;
     }
-    addOutgoingFriendRequest(_pendingAddFriendTarget, _pendingAddFriendRemark);
+
     _pendingAddFriendTarget = ContactItem{};
     _pendingAddFriendRemark.clear();
     requestFriendRequests();
@@ -808,6 +813,7 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
     }
     _knownPendingIncomingRequestIds = currentPendingIncomingIds;
     updateFriendRequestBadge();
+    emit friendRequestNotificationChanged(_hasUnreadFriendRequestNotification);
     refreshFriendRequestList();
 }
 
