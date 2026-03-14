@@ -22,7 +22,6 @@ class QLineEdit;
 class QLabel;
 class QPushButton;
 class QScrollArea;
-class QTimer;
 class QVBoxLayout;
 class QWidget;
 
@@ -101,7 +100,6 @@ private:
     MessageListWidget *_messageListWidget;
     ChatInputEdit *_chatInputEdit;
     SearchPopupWidget *_searchPopup;
-    QTimer *_friendRequestPollTimer = nullptr;
     QPushButton *_mockFriendRequestButton = nullptr;
     QScrollArea *_friendRequestScrollArea = nullptr;
     QWidget *_friendRequestListWidget = nullptr;

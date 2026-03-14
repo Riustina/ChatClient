@@ -1,4 +1,4 @@
-// TcpMgr.h
+﻿// TcpMgr.h
 
 #ifndef TCPMGR_H
 #define TCPMGR_H
@@ -36,6 +36,7 @@ signals:
     void sig_add_friend_rsp(const QJsonObject &payload);
     void sig_friend_requests_rsp(const QJsonObject &payload);
     void sig_handle_friend_request_rsp(const QJsonObject &payload);
+    void sig_friend_requests_push(const QJsonObject &payload);
 
 private:
     explicit TcpMgr();

@@ -27,7 +27,6 @@
 #include <QJsonObject>
 #include <QRandomGenerator>
 #include <QScrollArea>
-#include <QTimer>
 #include <QVBoxLayout>
 #include <QStyle>
 #include <algorithm>
@@ -57,7 +56,6 @@ ChatPage::ChatPage(QWidget *parent)
     , _messageListWidget(new MessageListWidget(this))
     , _chatInputEdit(new ChatInputEdit(this))
     , _searchPopup(new SearchPopupWidget(this))
-    , _friendRequestPollTimer(new QTimer(this))
 {
     ui->setupUi(this);
 
@@ -85,12 +83,6 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
     _hasUnreadFriendRequestNotification = false;
     updateFriendRequestBadge();
     emit friendRequestNotificationChanged(false);
-    if (_currentUserId > 0) {
-        requestFriendRequests();
-        _friendRequestPollTimer->start(5000);
-    } else {
-        _friendRequestPollTimer->stop();
-    }
 }
 
 bool ChatPage::eventFilter(QObject *watched, QEvent *event)
@@ -325,7 +317,6 @@ void ChatPage::setupUiExtensions()
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_add_friend_rsp, this, &ChatPage::onAddFriendRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_friend_requests_rsp, this, &ChatPage::onFriendRequestsRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_handle_friend_request_rsp, this, &ChatPage::onHandleFriendRequestRsp);
-    connect(_friendRequestPollTimer, &QTimer::timeout, this, &ChatPage::requestFriendRequests);
 }
 
 void ChatPage::setupFriendRequestPage()
@@ -761,7 +752,6 @@ void ChatPage::onAddFriendRsp(const QJsonObject &payload)
 
     _pendingAddFriendTarget = ContactItem{};
     _pendingAddFriendRemark.clear();
-    requestFriendRequests();
 }
 
 void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
@@ -850,7 +840,6 @@ void ChatPage::onHandleFriendRequestRsp(const QJsonObject &payload)
         applyEmptyConversationState();
     }
     refreshFriendRequestList();
-    requestFriendRequests();
 }
 
 void ChatPage::ensureConversationForFriend(FriendRequestItem &item)

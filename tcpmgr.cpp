@@ -185,6 +185,14 @@ void TcpMgr::initHandlers()
             emit sig_handle_friend_request_rsp(obj);
         });
     };
+
+    _handlers[ID_FRIEND_REQUESTS_PUSH] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        jsonForwarder(id, data, [this](const QJsonObject &obj) {
+            emit sig_friend_requests_push(obj);
+            emit sig_friend_requests_rsp(obj);
+        });
+    };
 }
 
 // —————————————————————————————————————————————————————————————————————————
