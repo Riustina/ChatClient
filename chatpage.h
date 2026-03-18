@@ -57,6 +57,9 @@ private slots:
     void onFriendRequestsRsp(const QJsonObject &payload);
     void onHandleFriendRequestRsp(const QJsonObject &payload);
     void onFriendListPush(const QJsonObject &payload);
+    void onPrivateMessagesRsp(const QJsonObject &payload);
+    void onSendPrivateMessageRsp(const QJsonObject &payload);
+    void onPrivateMessagePush(const QJsonObject &payload);
 
 private:
     struct Conversation {
@@ -91,9 +94,13 @@ private:
     void addIncomingFriendRequest(const QString &name);
     void refreshFriendRequestList();
     void applyFriendList(const QJsonArray &friends);
+    MessageItem messageFromJson(const QJsonObject &obj) const;
+    void applyPrivateMessages(int contactId, const QJsonArray &messages);
+    void appendPrivateMessage(const QJsonObject &obj, bool moveToTop);
     void ensureConversationForFriend(FriendRequestItem &item);
     void restoreCurrentConversation(int contactId);
     void requestFriendRequests();
+    void requestPrivateMessages(int contactId, int limit = 50);
     bool resolveAddFriendTarget(const QString &text, ContactItem &contact) const;
     void updateNavigationIcons();
     void updateFriendRequestBadge();

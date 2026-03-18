@@ -200,6 +200,27 @@ void TcpMgr::initHandlers()
             emit sig_friend_list_push(obj);
         });
     };
+
+    _handlers[ID_GET_PRIVATE_MESSAGES_RSP] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        jsonForwarder(id, data, [this](const QJsonObject &obj) {
+            emit sig_private_messages_rsp(obj);
+        });
+    };
+
+    _handlers[ID_SEND_PRIVATE_MESSAGE_RSP] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        jsonForwarder(id, data, [this](const QJsonObject &obj) {
+            emit sig_send_private_message_rsp(obj);
+        });
+    };
+
+    _handlers[ID_PRIVATE_MESSAGE_PUSH] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        jsonForwarder(id, data, [this](const QJsonObject &obj) {
+            emit sig_private_message_push(obj);
+        });
+    };
 }
 
 // —————————————————————————————————————————————————————————————————————————

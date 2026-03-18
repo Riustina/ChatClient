@@ -115,6 +115,9 @@ void ChatPage::onContactActivated(int index)
     ui->rightStackedWidget->setCurrentIndex(0);
     bindConversation(index);
     syncContactList();
+    if (index >= 0 && index < _conversations.size()) {
+        requestPrivateMessages(_conversations[index].contact.id);
+    }
 }
 
 void ChatPage::onSendClicked()
@@ -133,15 +136,21 @@ void ChatPage::onSendClicked()
         _conversations[_currentConversation].messages.push_back(createOutgoingImageMessage(pastedImage));
     }
     if (!text.isEmpty()) {
-        _conversations[_currentConversation].messages.push_back(createOutgoingTextMessage(text));
+        QJsonObject obj;
+        obj["to_uid"] = _conversations[_currentConversation].contact.id;
+        obj["content_type"] = "text";
+        obj["content"] = text;
+        emit TcpMgr::getInstance().sig_send_data(ID_SEND_PRIVATE_MESSAGE_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
     }
 
     _chatInputEdit->clear();
-    _currentConversation = moveConversationToFront(_currentConversation);
     _chatInputEdit->setPlaceholderText(QStringLiteral("输入消息，Enter 发送，Shift+Enter 换行。"));
-    refreshContactSummaries();
-    syncContactList();
-    bindConversation(_currentConversation);
+    if (!pastedImage.isNull()) {
+        _currentConversation = moveConversationToFront(_currentConversation);
+        refreshContactSummaries();
+        syncContactList();
+        bindConversation(_currentConversation);
+    }
 }
 
 void ChatPage::onMockReceiveClicked()
@@ -318,6 +327,9 @@ void ChatPage::setupUiExtensions()
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_friend_requests_rsp, this, &ChatPage::onFriendRequestsRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_handle_friend_request_rsp, this, &ChatPage::onHandleFriendRequestRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_friend_list_push, this, &ChatPage::onFriendListPush);
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_private_messages_rsp, this, &ChatPage::onPrivateMessagesRsp);
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_send_private_message_rsp, this, &ChatPage::onSendPrivateMessageRsp);
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_private_message_push, this, &ChatPage::onPrivateMessagePush);
 }
 
 void ChatPage::setupFriendRequestPage()
@@ -443,8 +455,6 @@ void ChatPage::refreshContactSummaries()
 {
     for (Conversation &conversation : _conversations) {
         if (conversation.messages.isEmpty()) {
-            conversation.contact.lastMessage.clear();
-            conversation.contact.timeText.clear();
             continue;
         }
 
@@ -707,6 +717,8 @@ void ChatPage::applyFriendList(const QJsonArray &friends)
         Conversation conversation = existingById.value(uid);
         conversation.contact.id = uid;
         conversation.contact.name = obj.value("name").toString();
+        conversation.contact.lastMessage = obj.value("last_message").toString();
+        conversation.contact.timeText = obj.value("last_time").toString();
         conversation.contact.avatarColor = avatarColorForName(
             conversation.contact.name.isEmpty() ? QString::number(uid) : conversation.contact.name);
         rebuilt.push_back(conversation);
@@ -719,6 +731,7 @@ void ChatPage::applyFriendList(const QJsonArray &friends)
         restoreCurrentConversation(currentContactId);
         syncContactList();
         bindConversation(_currentConversation);
+        requestPrivateMessages(_conversations[_currentConversation].contact.id);
     } else {
         syncContactList();
         applyEmptyConversationState();
@@ -891,6 +904,135 @@ void ChatPage::onFriendListPush(const QJsonObject &payload)
     }
 
     applyFriendList(payload.value("friends").toArray());
+}
+
+MessageItem ChatPage::messageFromJson(const QJsonObject &obj) const
+{
+    MessageItem item;
+    item.id = obj.value("msg_id").toInt();
+    item.senderName = obj.value("from_name").toString();
+    item.outgoing = obj.value("from_uid").toInt() == _currentUserId;
+    item.type = (obj.value("content_type").toString() == QStringLiteral("image"))
+        ? ChatMessageType::Image
+        : ChatMessageType::Text;
+    item.text = obj.value("content").toString();
+    item.avatarColor = avatarColorForName(item.senderName.isEmpty()
+        ? QString::number(obj.value("from_uid").toInt())
+        : item.senderName);
+    item.timestamp = QDateTime::fromString(obj.value("created_at").toString(), Qt::ISODate);
+    if (!item.timestamp.isValid()) {
+        item.timestamp = QDateTime::fromString(obj.value("created_at").toString(), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+    }
+    if (!item.timestamp.isValid()) {
+        item.timestamp = QDateTime::currentDateTime();
+    }
+    return item;
+}
+
+void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages)
+{
+    const int index = conversationIndexById(contactId);
+    if (index < 0) {
+        return;
+    }
+
+    QVector<MessageItem> rebuilt;
+    rebuilt.reserve(messages.size());
+    for (const QJsonValue &value : messages) {
+        rebuilt.push_back(messageFromJson(value.toObject()));
+    }
+
+    _conversations[index].messages = rebuilt;
+    refreshContactSummaries();
+    syncContactList();
+    if (_currentConversation == index) {
+        bindConversation(index);
+    }
+}
+
+void ChatPage::appendPrivateMessage(const QJsonObject &obj, bool moveToTop)
+{
+    const int contactId = obj.value("contact_id").toInt();
+    if (contactId <= 0) {
+        return;
+    }
+
+    const int previousCurrentContactId = (_currentConversation >= 0 && _currentConversation < _conversations.size())
+        ? _conversations[_currentConversation].contact.id
+        : -1;
+
+    int index = conversationIndexById(contactId);
+    if (index < 0) {
+        Conversation conversation;
+        conversation.contact.id = contactId;
+        conversation.contact.name = obj.value("from_uid").toInt() == _currentUserId
+            ? obj.value("to_name").toString()
+            : obj.value("from_name").toString();
+        conversation.contact.avatarColor = avatarColorForName(conversation.contact.name);
+        _conversations.prepend(conversation);
+        index = 0;
+    }
+
+    _conversations[index].messages.push_back(messageFromJson(obj));
+    refreshContactSummaries();
+    if (moveToTop) {
+        index = moveConversationToFront(index);
+    }
+    if (contactId == previousCurrentContactId) {
+        _currentConversation = index;
+    } else {
+        restoreCurrentConversation(previousCurrentContactId);
+    }
+    syncContactList();
+    if (contactId == previousCurrentContactId) {
+        bindConversation(index);
+    } else if (_currentConversation >= 0 && _currentConversation < _conversations.size()) {
+        bindConversation(_currentConversation);
+    }
+}
+
+void ChatPage::requestPrivateMessages(int contactId, int limit)
+{
+    if (_currentUserId <= 0 || contactId <= 0) {
+        return;
+    }
+
+    QJsonObject obj;
+    obj["contact_id"] = contactId;
+    obj["limit"] = limit;
+    emit TcpMgr::getInstance().sig_send_data(ID_GET_PRIVATE_MESSAGES_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+}
+
+void ChatPage::onPrivateMessagesRsp(const QJsonObject &payload)
+{
+    if (payload.value("error").toInt() != 0) {
+        return;
+    }
+
+    const int contactId = payload.value("contact_id").toInt();
+    applyPrivateMessages(contactId, payload.value("messages").toArray());
+}
+
+void ChatPage::onSendPrivateMessageRsp(const QJsonObject &payload)
+{
+    if (payload.value("error").toInt() != 0) {
+        const QString message = payload.value("message").toString().trimmed();
+        QMessageBox::warning(this,
+                             QStringLiteral("发送失败"),
+                             message.isEmpty() ? QStringLiteral("消息发送失败，请稍后再试。") : message);
+        return;
+    }
+
+    appendPrivateMessage(payload.value("message").toObject(), true);
+}
+
+void ChatPage::onPrivateMessagePush(const QJsonObject &payload)
+{
+    if (payload.value("error").toInt() != 0) {
+        return;
+    }
+
+    appendPrivateMessage(payload.value("message").toObject(), true);
 }
 
 void ChatPage::ensureConversationForFriend(FriendRequestItem &item)
