@@ -13,6 +13,7 @@ class MessageCell : public QWidget
 
 public:
     explicit MessageCell(QWidget *parent = nullptr);
+    ~MessageCell() override;
 
     void setMessage(const MessageItem &message, int availableWidth);
     static int heightForMessage(const MessageItem &message, int availableWidth);
@@ -21,6 +22,7 @@ private:
     void updateAvatar(const MessageItem &message);
     void layoutOutgoing(int bubbleWidth, int contentHeight);
     void layoutIncoming(int bubbleWidth, int contentHeight);
+    void showTextContextMenu(const QPoint &pos);
 
     QLabel *_avatarLabel;
     QWidget *_bubbleWidget;
