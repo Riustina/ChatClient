@@ -26,7 +26,8 @@ protected:
     bool event(QEvent *event) override;
 
 private:
-    void setFriendRequestTaskbarFlash(bool enabled);
+    void updateTaskbarFlashState();
+    void stopTaskbarFlash();
 
     Ui::MainWindow *ui;
     QStackedWidget *_stackedWidget;
@@ -35,5 +36,6 @@ private:
     RegisterDialog *_registerDialog;
     ResetDialog *_resetDialog;
     bool _friendRequestFlashActive = false;
+    bool _chatMessageFlashActive = false;
 };
 #endif // MAINWINDOW_H

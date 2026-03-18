@@ -33,11 +33,13 @@ private:
     void updateMessageText();
     void updateAvatar(const ContactItem &contact);
     void updateStyles();
+    void updateUnreadBadge(const ContactItem &contact);
 
     QLabel *_avatarLabel;
     QLabel *_nameLabel;
     QLabel *_messageLabel;
     QLabel *_timeLabel;
+    QLabel *_unreadBadgeLabel;
     QString _lastMessageText;
     bool _selected = false;
     bool _hovered = false;

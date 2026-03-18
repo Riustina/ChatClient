@@ -28,6 +28,7 @@ struct ContactItem {
     QString lastMessage;
     QString timeText;
     QColor avatarColor;
+    int unreadCount = 0;
 };
 
 struct MessageItem {

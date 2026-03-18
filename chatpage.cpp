@@ -81,8 +81,11 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
     _currentUserName = name;
     _knownPendingIncomingRequestIds.clear();
     _hasUnreadFriendRequestNotification = false;
+    _hasUnreadChatNotification = false;
     updateFriendRequestBadge();
+    updateChatBadge();
     emit friendRequestNotificationChanged(false);
+    emit chatMessageNotificationChanged(false);
 }
 
 bool ChatPage::eventFilter(QObject *watched, QEvent *event)
@@ -275,6 +278,12 @@ void ChatPage::setupUiExtensions()
     _friendRequestBadgeLabel->setStyleSheet("background:#ef4444; border-radius:4px;");
     _friendRequestBadgeLabel->hide();
 
+    _chatBadgeLabel = new QLabel(ui->chatNavButton);
+    _chatBadgeLabel->setFixedSize(8, 8);
+    _chatBadgeLabel->move(ui->chatNavButton->width() - 10, 2);
+    _chatBadgeLabel->setStyleSheet("background:#ef4444; border-radius:4px;");
+    _chatBadgeLabel->hide();
+
     setStyleSheet(
         "ChatPage { background:#F4F3F9; }"
         "QFrame#navFrame { background:#F4F3F9; border-right:1px solid #dfdde7; }"
@@ -376,6 +385,8 @@ void ChatPage::setupNavigation()
             _hasUnreadFriendRequestNotification = false;
             updateFriendRequestBadge();
             emit friendRequestNotificationChanged(false);
+        } else if (id == 0) {
+            updateChatUnreadNotification();
         }
     });
 
@@ -397,8 +408,11 @@ void ChatPage::bindConversation(int index)
     }
 
     _currentConversation = index;
+    _conversations[index].contact.unreadCount = 0;
     ui->chatTitleLabel->setText(_conversations[index].contact.name);
     _messageListWidget->setMessages(_conversations[index].messages);
+    syncContactList();
+    updateChatUnreadNotification();
 }
 
 void ChatPage::applyEmptyConversationState()
@@ -943,8 +957,12 @@ void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages)
     }
 
     _conversations[index].messages = rebuilt;
+    if (_currentConversation == index) {
+        _conversations[index].contact.unreadCount = 0;
+    }
     refreshContactSummaries();
     syncContactList();
+    updateChatUnreadNotification();
     if (_currentConversation == index) {
         bindConversation(index);
     }
@@ -974,6 +992,11 @@ void ChatPage::appendPrivateMessage(const QJsonObject &obj, bool moveToTop)
     }
 
     _conversations[index].messages.push_back(messageFromJson(obj));
+    if (contactId != previousCurrentContactId) {
+        ++_conversations[index].contact.unreadCount;
+    } else {
+        _conversations[index].contact.unreadCount = 0;
+    }
     refreshContactSummaries();
     if (moveToTop) {
         index = moveConversationToFront(index);
@@ -984,6 +1007,7 @@ void ChatPage::appendPrivateMessage(const QJsonObject &obj, bool moveToTop)
         restoreCurrentConversation(previousCurrentContactId);
     }
     syncContactList();
+    updateChatUnreadNotification();
     if (contactId == previousCurrentContactId) {
         bindConversation(index);
     } else if (_currentConversation >= 0 && _currentConversation < _conversations.size()) {
@@ -1101,4 +1125,30 @@ void ChatPage::updateFriendRequestBadge()
     }
     _friendRequestBadgeLabel->setVisible(_hasUnreadFriendRequestNotification);
     _friendRequestBadgeLabel->raise();
+}
+
+void ChatPage::updateChatBadge()
+{
+    if (_chatBadgeLabel == nullptr) {
+        return;
+    }
+    _chatBadgeLabel->setVisible(_hasUnreadChatNotification);
+    _chatBadgeLabel->raise();
+}
+
+void ChatPage::updateChatUnreadNotification()
+{
+    bool hasUnread = false;
+    for (const Conversation &conversation : std::as_const(_conversations)) {
+        if (conversation.contact.unreadCount > 0) {
+            hasUnread = true;
+            break;
+        }
+    }
+
+    if (_hasUnreadChatNotification != hasUnread) {
+        _hasUnreadChatNotification = hasUnread;
+        emit chatMessageNotificationChanged(hasUnread);
+    }
+    updateChatBadge();
 }

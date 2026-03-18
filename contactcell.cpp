@@ -40,6 +40,7 @@ ContactCell::ContactCell(QWidget *parent)
     , _nameLabel(new QLabel(this))
     , _messageLabel(new QLabel(this))
     , _timeLabel(new QLabel(this))
+    , _unreadBadgeLabel(new QLabel(this))
 {
     auto *rootLayout = new QHBoxLayout(this);
     rootLayout->setContentsMargins(10, 6, 10, 6);
@@ -52,6 +53,9 @@ ContactCell::ContactCell(QWidget *parent)
     _nameLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     _messageLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
     _timeLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    _unreadBadgeLabel->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+    _unreadBadgeLabel->setAlignment(Qt::AlignCenter);
+    _unreadBadgeLabel->hide();
 
     auto *contentLayout = new QVBoxLayout;
     contentLayout->setContentsMargins(0, 2, 0, 0);
@@ -91,6 +95,8 @@ void ContactCell::setContact(const ContactItem &contact)
     _timeLabel->setText(contact.timeText);
     updateAvatar(contact);
     updateMessageText();
+    updateUnreadBadge(contact);
+    updateStyles();
 }
 
 void ContactCell::setSelected(bool selected)
@@ -147,6 +153,32 @@ void ContactCell::updateAvatar(const ContactItem &contact)
     _avatarLabel->setContentsMargins(0, 0, 0, 0);
 }
 
+void ContactCell::updateUnreadBadge(const ContactItem &contact)
+{
+    if (contact.unreadCount <= 0) {
+        _unreadBadgeLabel->hide();
+        return;
+    }
+
+    const QString badgeText = contact.unreadCount > 99
+        ? QStringLiteral("99+")
+        : QString::number(contact.unreadCount);
+    _unreadBadgeLabel->setText(badgeText);
+    const int minWidth = (contact.unreadCount > 9) ? 24 : 18;
+    _unreadBadgeLabel->setFixedSize(minWidth, 18);
+    _unreadBadgeLabel->setStyleSheet(
+        "QLabel {"
+        "background:#ef4444;"
+        "color:white;"
+        "border:none;"
+        "border-radius:9px;"
+        "padding:0 4px;"
+        "font: 8pt 'Microsoft YaHei UI';"
+        "}");
+    _unreadBadgeLabel->show();
+    _unreadBadgeLabel->raise();
+}
+
 void ContactCell::updateStyles()
 {
     QString background = "transparent";
@@ -171,4 +203,8 @@ void ContactCell::updateStyles()
     _nameLabel->setStyleSheet("color:#18212f; background:transparent;");
     _messageLabel->setStyleSheet("color:#6b7280; background:transparent;");
     _timeLabel->setStyleSheet("color:#94a3b8; background:transparent;");
+    if (_unreadBadgeLabel->isVisible()) {
+        _unreadBadgeLabel->move(width() - _unreadBadgeLabel->width() - 10,
+                                height() - _unreadBadgeLabel->height() - 9);
+    }
 }

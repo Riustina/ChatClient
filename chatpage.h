@@ -37,6 +37,7 @@ public:
 
 signals:
     void friendRequestNotificationChanged(bool hasUnread);
+    void chatMessageNotificationChanged(bool hasUnread);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -104,6 +105,8 @@ private:
     bool resolveAddFriendTarget(const QString &text, ContactItem &contact) const;
     void updateNavigationIcons();
     void updateFriendRequestBadge();
+    void updateChatBadge();
+    void updateChatUnreadNotification();
 
     Ui::ChatPage *ui;
     ContactListWidget *_contactListWidget;
@@ -121,7 +124,9 @@ private:
     ContactItem _pendingAddFriendTarget;
     QString _pendingAddFriendRemark;
     QLabel *_friendRequestBadgeLabel = nullptr;
+    QLabel *_chatBadgeLabel = nullptr;
     bool _hasUnreadFriendRequestNotification = false;
+    bool _hasUnreadChatNotification = false;
     int _currentUserId = 0;
     QString _currentUserName;
     int _currentConversation = 0;

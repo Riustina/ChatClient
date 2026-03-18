@@ -58,13 +58,21 @@ MainWindow::MainWindow(QWidget *parent)
 
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_server_closed, this, [this]() {
         QMessageBox::warning(this, "连接断开", "聊天服务器已关闭或连接已断开，请重新登录。", QMessageBox::Ok);
-        setFriendRequestTaskbarFlash(false);
+        _friendRequestFlashActive = false;
+        _chatMessageFlashActive = false;
+        updateTaskbarFlashState();
         setWindowTitle("Chat Client");
         _stackedWidget->setCurrentWidget(_loginDialog);
     });
 
     connect(_chatPage, &ChatPage::friendRequestNotificationChanged, this, [this](bool hasUnread) {
-        setFriendRequestTaskbarFlash(hasUnread);
+        _friendRequestFlashActive = hasUnread;
+        updateTaskbarFlashState();
+    });
+
+    connect(_chatPage, &ChatPage::chatMessageNotificationChanged, this, [this](bool hasUnread) {
+        _chatMessageFlashActive = hasUnread;
+        updateTaskbarFlashState();
     });
 }
 
@@ -76,15 +84,15 @@ MainWindow::~MainWindow()
 
 bool MainWindow::event(QEvent *event)
 {
-    if (event->type() == QEvent::WindowActivate && _friendRequestFlashActive) {
-        setFriendRequestTaskbarFlash(false);
+    if (event->type() == QEvent::WindowActivate && (_friendRequestFlashActive || _chatMessageFlashActive)) {
+        stopTaskbarFlash();
     }
     return QMainWindow::event(event);
 }
 
-void MainWindow::setFriendRequestTaskbarFlash(bool enabled)
+void MainWindow::updateTaskbarFlashState()
 {
-    _friendRequestFlashActive = enabled;
+    const bool enabled = _friendRequestFlashActive || _chatMessageFlashActive;
 #ifdef Q_OS_WIN
     FLASHWINFO info;
     info.cbSize = sizeof(FLASHWINFO);
@@ -95,5 +103,18 @@ void MainWindow::setFriendRequestTaskbarFlash(bool enabled)
     FlashWindowEx(&info);
 #else
     Q_UNUSED(enabled);
+#endif
+}
+
+void MainWindow::stopTaskbarFlash()
+{
+#ifdef Q_OS_WIN
+    FLASHWINFO info;
+    info.cbSize = sizeof(FLASHWINFO);
+    info.hwnd = reinterpret_cast<HWND>(winId());
+    info.dwFlags = FLASHW_STOP;
+    info.uCount = 0;
+    info.dwTimeout = 0;
+    FlashWindowEx(&info);
 #endif
 }
