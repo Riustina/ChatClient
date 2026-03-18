@@ -1,6 +1,7 @@
 #ifndef CHATPAGE_H
 #define CHATPAGE_H
 
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QSet>
 #include <QVector>
@@ -55,6 +56,7 @@ private slots:
     void onAddFriendRsp(const QJsonObject &payload);
     void onFriendRequestsRsp(const QJsonObject &payload);
     void onHandleFriendRequestRsp(const QJsonObject &payload);
+    void onFriendListPush(const QJsonObject &payload);
 
 private:
     struct Conversation {
@@ -88,6 +90,7 @@ private:
     void addOutgoingFriendRequest(const ContactItem &contact, const QString &remark = QString());
     void addIncomingFriendRequest(const QString &name);
     void refreshFriendRequestList();
+    void applyFriendList(const QJsonArray &friends);
     void ensureConversationForFriend(FriendRequestItem &item);
     void restoreCurrentConversation(int contactId);
     void requestFriendRequests();

@@ -317,6 +317,7 @@ void ChatPage::setupUiExtensions()
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_add_friend_rsp, this, &ChatPage::onAddFriendRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_friend_requests_rsp, this, &ChatPage::onFriendRequestsRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_handle_friend_request_rsp, this, &ChatPage::onHandleFriendRequestRsp);
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_friend_list_push, this, &ChatPage::onFriendListPush);
 }
 
 void ChatPage::setupFriendRequestPage()
@@ -683,6 +684,47 @@ void ChatPage::refreshFriendRequestList()
     _friendRequestListLayout->addStretch();
 }
 
+void ChatPage::applyFriendList(const QJsonArray &friends)
+{
+    const int currentContactId = (_currentConversation >= 0 && _currentConversation < _conversations.size())
+        ? _conversations[_currentConversation].contact.id
+        : -1;
+
+    QHash<int, Conversation> existingById;
+    for (const Conversation &conversation : std::as_const(_conversations)) {
+        existingById.insert(conversation.contact.id, conversation);
+    }
+
+    QVector<Conversation> rebuilt;
+    rebuilt.reserve(friends.size());
+    for (const QJsonValue &value : friends) {
+        const QJsonObject obj = value.toObject();
+        const int uid = obj.value("uid").toInt();
+        if (uid <= 0) {
+            continue;
+        }
+
+        Conversation conversation = existingById.value(uid);
+        conversation.contact.id = uid;
+        conversation.contact.name = obj.value("name").toString();
+        conversation.contact.avatarColor = avatarColorForName(
+            conversation.contact.name.isEmpty() ? QString::number(uid) : conversation.contact.name);
+        rebuilt.push_back(conversation);
+    }
+
+    _conversations = rebuilt;
+    refreshContactSummaries();
+    if (!_conversations.isEmpty()) {
+        sortConversationsByLatest();
+        restoreCurrentConversation(currentContactId);
+        syncContactList();
+        bindConversation(_currentConversation);
+    } else {
+        syncContactList();
+        applyEmptyConversationState();
+    }
+}
+
 void ChatPage::requestFriendRequests()
 {
     if (_currentUserId <= 0) {
@@ -840,6 +882,15 @@ void ChatPage::onHandleFriendRequestRsp(const QJsonObject &payload)
         applyEmptyConversationState();
     }
     refreshFriendRequestList();
+}
+
+void ChatPage::onFriendListPush(const QJsonObject &payload)
+{
+    if (payload.value("error").toInt() != 0) {
+        return;
+    }
+
+    applyFriendList(payload.value("friends").toArray());
 }
 
 void ChatPage::ensureConversationForFriend(FriendRequestItem &item)

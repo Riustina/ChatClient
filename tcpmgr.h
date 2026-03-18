@@ -37,6 +37,7 @@ signals:
     void sig_friend_requests_rsp(const QJsonObject &payload);
     void sig_handle_friend_request_rsp(const QJsonObject &payload);
     void sig_friend_requests_push(const QJsonObject &payload);
+    void sig_friend_list_push(const QJsonObject &payload);
 
 private:
     explicit TcpMgr();
