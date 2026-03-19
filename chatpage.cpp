@@ -5,6 +5,7 @@
 #include "chatinputedit.h"
 #include "contactlistwidget.h"
 #include "friendrequestitemwidget.h"
+#include "localdb.h"
 #include "messagelistwidget.h"
 #include "searchpopupwidget.h"
 #include "tcpmgr.h"
@@ -741,6 +742,14 @@ void ChatPage::applyFriendList(const QJsonArray &friends)
     }
 
     _conversations = rebuilt;
+    QVector<ContactItem> contactsToSave;
+    contactsToSave.reserve(_conversations.size());
+    for (const Conversation &conversation : std::as_const(_conversations)) {
+        contactsToSave.push_back(conversation.contact);
+    }
+    if (!LocalDb::instance().saveFriendList(contactsToSave)) {
+        qWarning() << "[ChatPage] 保存好友列表到本地数据库失败:" << LocalDb::instance().lastError();
+    }
     refreshContactSummaries();
     if (!_conversations.isEmpty()) {
         sortConversationsByLatest();
@@ -873,6 +882,9 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
         _hasUnreadFriendRequestNotification = false;
     }
     _knownPendingIncomingRequestIds = currentPendingIncomingIds;
+    if (!LocalDb::instance().saveFriendRequests(_friendRequests, _currentUserId)) {
+        qWarning() << "[ChatPage] 保存好友申请到本地数据库失败:" << LocalDb::instance().lastError();
+    }
     updateFriendRequestBadge();
     emit friendRequestNotificationChanged(_hasUnreadFriendRequestNotification);
     refreshFriendRequestList();
@@ -959,6 +971,9 @@ void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages)
     }
 
     _conversations[index].messages = rebuilt;
+    if (!LocalDb::instance().replaceConversationMessages(contactId, rebuilt, _currentUserId)) {
+        qWarning() << "[ChatPage] 保存会话历史到本地数据库失败:" << LocalDb::instance().lastError();
+    }
     if (_currentConversation == index) {
         _conversations[index].contact.unreadCount = 0;
     }
@@ -993,7 +1008,11 @@ void ChatPage::appendPrivateMessage(const QJsonObject &obj, bool moveToTop)
         index = 0;
     }
 
-    _conversations[index].messages.push_back(messageFromJson(obj));
+    const MessageItem message = messageFromJson(obj);
+    _conversations[index].messages.push_back(message);
+    if (!LocalDb::instance().upsertMessage(contactId, message, _currentUserId)) {
+        qWarning() << "[ChatPage] 保存单条消息到本地数据库失败:" << LocalDb::instance().lastError();
+    }
     if (contactId != previousCurrentContactId) {
         ++_conversations[index].contact.unreadCount;
     } else {

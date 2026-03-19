@@ -1,5 +1,6 @@
 ﻿#include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include "localdb.h"
 #include "tcpmgr.h"
 #include "usermgr.h"
 #include <QEvent>
@@ -50,6 +51,12 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_switch_chatdlg, this, [this]() {
+        if (!LocalDb::instance().switchUser(UserMgr::getInstance().GetUid())) {
+            QMessageBox::critical(this,
+                                  QStringLiteral("本地数据库初始化失败"),
+                                  QStringLiteral("无法切换到当前用户的本地数据库：\n%1").arg(LocalDb::instance().lastError()));
+            return;
+        }
         _chatPage->setCurrentUser(UserMgr::getInstance().GetUid(),
                                   UserMgr::getInstance().GetName());
         setWindowTitle(UserMgr::getInstance().GetName());

@@ -1,4 +1,4 @@
-QT       += core gui network
+QT       += core gui network sql
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -18,6 +18,7 @@ SOURCES += \
     searchpopupwidget.cpp \
     global.cpp \
     httpmgr.cpp \
+    localdb.cpp \
     logindialog.cpp \
     main.cpp \
     mainwindow.cpp \
@@ -40,6 +41,7 @@ HEADERS += \
     searchpopupwidget.h \
     global.h \
     httpmgr.h \
+    localdb.h \
     logindialog.h \
     mainwindow.h \
     messagecell.h \
