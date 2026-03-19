@@ -80,9 +80,44 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
 {
     _currentUserId = uid;
     _currentUserName = name;
+    _conversations.clear();
+    _friendRequests.clear();
+    _searchResults.clear();
+    _currentConversation = 0;
     _knownPendingIncomingRequestIds.clear();
     _hasUnreadFriendRequestNotification = false;
     _hasUnreadChatNotification = false;
+
+    const QVector<ContactItem> localContacts = LocalDb::instance().loadFriendList();
+    qDebug() << "[ChatPage] setCurrentUser 从本地数据库恢复好友列表:" << localContacts.size() << "条";
+    _conversations.reserve(localContacts.size());
+    for (const ContactItem &contact : localContacts) {
+        Conversation conversation;
+        conversation.contact = contact;
+        conversation.contact.avatarColor = avatarColorForName(
+            conversation.contact.name.isEmpty() ? QString::number(conversation.contact.id) : conversation.contact.name);
+        _conversations.push_back(conversation);
+    }
+
+    _friendRequests = LocalDb::instance().loadFriendRequests(uid);
+    qDebug() << "[ChatPage] setCurrentUser 从本地数据库恢复好友申请:" << _friendRequests.size() << "条";
+    for (FriendRequestItem &request : _friendRequests) {
+        request.avatarColor = avatarColorForName(request.name);
+    }
+
+    if (!_conversations.isEmpty()) {
+        _conversations[0].messages = LocalDb::instance().loadConversationMessages(_conversations[0].contact.id, _currentUserId);
+        qDebug() << "[ChatPage] setCurrentUser 从本地数据库恢复默认会话消息:" << _conversations[0].messages.size()
+                 << "条, contactId:" << _conversations[0].contact.id;
+        syncContactList();
+        bindConversation(0);
+    } else {
+        qDebug() << "[ChatPage] setCurrentUser 本地数据库没有可恢复的好友列表";
+        syncContactList();
+        applyEmptyConversationState();
+    }
+
+    refreshFriendRequestList();
     updateFriendRequestBadge();
     updateChatBadge();
     emit friendRequestNotificationChanged(false);
@@ -840,6 +875,9 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
         return;
     }
 
+    qDebug() << "[ChatPage] onFriendRequestsRsp 收到服务端好友申请列表:"
+             << payload.value("requests").toArray().size() << "条";
+
     _friendRequests.clear();
     QSet<int> currentPendingIncomingIds;
     const QJsonArray requests = payload.value("requests").toArray();
@@ -930,6 +968,9 @@ void ChatPage::onFriendListPush(const QJsonObject &payload)
     if (payload.value("error").toInt() != 0) {
         return;
     }
+
+    qDebug() << "[ChatPage] onFriendListPush 收到服务端好友列表:"
+             << payload.value("friends").toArray().size() << "条";
 
     applyFriendList(payload.value("friends").toArray());
 }
@@ -1066,6 +1107,8 @@ void ChatPage::onPrivateMessagesRsp(const QJsonObject &payload)
     }
 
     const int contactId = payload.value("contact_id").toInt();
+    qDebug() << "[ChatPage] onPrivateMessagesRsp 收到服务端历史消息:"
+             << payload.value("messages").toArray().size() << "条, contactId:" << contactId;
     applyPrivateMessages(contactId, payload.value("messages").toArray());
 }
 

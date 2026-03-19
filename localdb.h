@@ -21,6 +21,9 @@ public:
     bool saveFriendRequests(const QVector<FriendRequestItem> &requests, int currentUserId);
     bool replaceConversationMessages(int contactId, const QVector<MessageItem> &messages, int currentUserId);
     bool upsertMessage(int contactId, const MessageItem &message, int currentUserId);
+    QVector<ContactItem> loadFriendList();
+    QVector<FriendRequestItem> loadFriendRequests(int currentUserId);
+    QVector<MessageItem> loadConversationMessages(int contactId, int currentUserId);
 
 private:
     LocalDb() = default;

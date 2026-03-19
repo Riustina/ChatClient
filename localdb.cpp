@@ -401,3 +401,114 @@ bool LocalDb::upsertMessageItem(int contactId, const MessageItem &message, int c
     }
     return true;
 }
+
+QVector<ContactItem> LocalDb::loadFriendList()
+{
+    QVector<ContactItem> contacts;
+    QSqlDatabase db = QSqlDatabase::database(kConnectionName);
+    if (!db.isOpen()) {
+        _lastError = QStringLiteral("鏈湴鏁版嵁搴撴湭鎵撳紑");
+        return contacts;
+    }
+
+    QSqlQuery query(db);
+    if (!query.exec(QStringLiteral(
+            "SELECT contact_id, name, last_message, last_time, unread_count "
+            "FROM contact_summary ORDER BY updated_at DESC, contact_id ASC"))) {
+        _lastError = query.lastError().text();
+        qWarning() << "[LocalDb] 璇诲彇 contact_summary 澶辫触:" << _lastError;
+        return contacts;
+    }
+
+    while (query.next()) {
+        ContactItem contact;
+        contact.id = query.value(0).toInt();
+        contact.name = query.value(1).toString();
+        contact.lastMessage = query.value(2).toString();
+        contact.timeText = query.value(3).toString();
+        contact.unreadCount = query.value(4).toInt();
+        contacts.push_back(contact);
+    }
+
+    return contacts;
+}
+
+QVector<FriendRequestItem> LocalDb::loadFriendRequests(int currentUserId)
+{
+    QVector<FriendRequestItem> requests;
+    QSqlDatabase db = QSqlDatabase::database(kConnectionName);
+    if (!db.isOpen()) {
+        _lastError = QStringLiteral("鏈湴鏁版嵁搴撴湭鎵撳紑");
+        return requests;
+    }
+
+    QSqlQuery query(db);
+    if (!query.exec(QStringLiteral(
+            "SELECT request_id, from_uid, to_uid, name, remark, status "
+            "FROM friend_request ORDER BY updated_at DESC, request_id DESC"))) {
+        _lastError = query.lastError().text();
+        qWarning() << "[LocalDb] 璇诲彇 friend_request 澶辫触:" << _lastError;
+        return requests;
+    }
+
+    while (query.next()) {
+        FriendRequestItem item;
+        item.id = query.value(0).toInt();
+        const int fromUid = query.value(1).toInt();
+        const int toUid = query.value(2).toInt();
+        item.name = query.value(3).toString();
+        item.remark = query.value(4).toString();
+        const QString status = query.value(5).toString();
+        item.direction = fromUid == currentUserId ? FriendRequestDirection::Outgoing : FriendRequestDirection::Incoming;
+        item.contactId = item.direction == FriendRequestDirection::Outgoing ? toUid : fromUid;
+        if (status == QStringLiteral("accepted")) {
+            item.state = FriendRequestState::Added;
+        } else if (status == QStringLiteral("rejected")) {
+            item.state = FriendRequestState::Rejected;
+        } else {
+            item.state = FriendRequestState::Pending;
+        }
+        requests.push_back(item);
+    }
+
+    return requests;
+}
+
+QVector<MessageItem> LocalDb::loadConversationMessages(int contactId, int currentUserId)
+{
+    QVector<MessageItem> messages;
+    QSqlDatabase db = QSqlDatabase::database(kConnectionName);
+    if (!db.isOpen()) {
+        _lastError = QStringLiteral("鏈湴鏁版嵁搴撴湭鎵撳紑");
+        return messages;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "SELECT msg_id, from_uid, to_uid, content_type, content, created_at "
+        "FROM private_message WHERE contact_id = ? ORDER BY created_at ASC, msg_id ASC"));
+    query.addBindValue(contactId);
+    if (!query.exec()) {
+        _lastError = query.lastError().text();
+        qWarning() << "[LocalDb] 璇诲彇 private_message 澶辫触:" << _lastError;
+        return messages;
+    }
+
+    while (query.next()) {
+        MessageItem item;
+        item.id = query.value(0).toInt();
+        item.outgoing = query.value(1).toInt() == currentUserId;
+        item.type = query.value(3).toString() == QStringLiteral("image") ? ChatMessageType::Image : ChatMessageType::Text;
+        item.text = query.value(4).toString();
+        item.timestamp = QDateTime::fromString(query.value(5).toString(), Qt::ISODate);
+        if (!item.timestamp.isValid()) {
+            item.timestamp = QDateTime::fromString(query.value(5).toString(), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+        }
+        if (!item.timestamp.isValid()) {
+            item.timestamp = QDateTime::currentDateTime();
+        }
+        messages.push_back(item);
+    }
+
+    return messages;
+}

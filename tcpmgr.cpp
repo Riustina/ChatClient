@@ -88,8 +88,8 @@ TcpMgr::TcpMgr()
             QByteArray body = _buffer.left(_message_len);
             _buffer = _buffer.mid(_message_len);
 
-            qDebug() << "[TcpMgr] 收到完整消息，msgId:" << _message_id
-                     << "  body:" << body;
+            // qDebug() << "[TcpMgr] 收到完整消息，msgId:" << _message_id
+            //          << "  body:" << body;
 
             dispatchMsg(_message_id, body);
             // 继续 forever 循环，处理缓冲区里可能还有的下一条消息
