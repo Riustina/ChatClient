@@ -107,6 +107,7 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
 
     if (!_conversations.isEmpty()) {
         _conversations[0].messages = LocalDb::instance().loadConversationMessages(_conversations[0].contact.id, _currentUserId);
+        hydrateConversationMessages(_conversations[0]);
         qDebug() << "[ChatPage] setCurrentUser 从本地数据库恢复默认会话消息:" << _conversations[0].messages.size()
                  << "条, contactId:" << _conversations[0].contact.id;
         syncContactList();
@@ -152,6 +153,7 @@ void ChatPage::onContactActivated(int index)
 {
     ui->chatNavButton->setChecked(true);
     ui->rightStackedWidget->setCurrentIndex(0);
+    ensureConversationMessagesLoaded(index);
     bindConversation(index);
     syncContactList();
     if (index >= 0 && index < _conversations.size()) {
@@ -443,6 +445,7 @@ void ChatPage::bindConversation(int index)
         return;
     }
 
+    ensureConversationMessagesLoaded(index);
     _currentConversation = index;
     _conversations[index].contact.unreadCount = 0;
     ui->chatTitleLabel->setText(_conversations[index].contact.name);
@@ -998,7 +1001,7 @@ MessageItem ChatPage::messageFromJson(const QJsonObject &obj) const
     return item;
 }
 
-void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages)
+void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages, bool incremental)
 {
     const int index = conversationIndexById(contactId);
     if (index < 0) {
@@ -1011,10 +1014,27 @@ void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages)
         rebuilt.push_back(messageFromJson(value.toObject()));
     }
 
-    _conversations[index].messages = rebuilt;
-    if (!LocalDb::instance().replaceConversationMessages(contactId, rebuilt, _currentUserId)) {
+    if (!incremental) {
+        _conversations[index].messages = rebuilt;
+    } else {
+        QSet<int> existingIds;
+        existingIds.reserve(_conversations[index].messages.size());
+        for (const MessageItem &item : std::as_const(_conversations[index].messages)) {
+            existingIds.insert(item.id);
+        }
+        for (const MessageItem &item : std::as_const(rebuilt)) {
+            if (!existingIds.contains(item.id)) {
+                _conversations[index].messages.push_back(item);
+            }
+            if (!LocalDb::instance().upsertMessage(contactId, item, _currentUserId)) {
+                qWarning() << "[ChatPage] 淇濆瓨鍗曟潯澧為噺娑堟伅鍒版湰鍦版暟鎹簱澶辫触:" << LocalDb::instance().lastError();
+            }
+        }
+    }
+    if (!incremental && !LocalDb::instance().replaceConversationMessages(contactId, rebuilt, _currentUserId)) {
         qWarning() << "[ChatPage] 保存会话历史到本地数据库失败:" << LocalDb::instance().lastError();
     }
+    hydrateConversationMessages(_conversations[index]);
     if (_currentConversation == index) {
         _conversations[index].contact.unreadCount = 0;
     }
@@ -1051,6 +1071,7 @@ void ChatPage::appendPrivateMessage(const QJsonObject &obj, bool moveToTop)
 
     const MessageItem message = messageFromJson(obj);
     _conversations[index].messages.push_back(message);
+    hydrateConversationMessages(_conversations[index]);
     if (!LocalDb::instance().upsertMessage(contactId, message, _currentUserId)) {
         qWarning() << "[ChatPage] 保存单条消息到本地数据库失败:" << LocalDb::instance().lastError();
     }
@@ -1077,15 +1098,22 @@ void ChatPage::appendPrivateMessage(const QJsonObject &obj, bool moveToTop)
     }
 }
 
-void ChatPage::requestPrivateMessages(int contactId, int limit)
+void ChatPage::requestPrivateMessages(int contactId, int limit, qint64 afterMsgId)
 {
     if (_currentUserId <= 0 || contactId <= 0) {
         return;
     }
 
+    if (afterMsgId < 0) {
+        afterMsgId = LocalDb::instance().conversationCursor(contactId);
+    }
+
     QJsonObject obj;
     obj["contact_id"] = contactId;
     obj["limit"] = limit;
+    if (afterMsgId > 0) {
+        obj["after_msg_id"] = afterMsgId;
+    }
     emit TcpMgr::getInstance().sig_send_data(ID_GET_PRIVATE_MESSAGES_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
 }
 
@@ -1107,9 +1135,12 @@ void ChatPage::onPrivateMessagesRsp(const QJsonObject &payload)
     }
 
     const int contactId = payload.value("contact_id").toInt();
+    const bool incremental = payload.value("incremental").toBool(false);
+    const qint64 afterMsgId = payload.value("after_msg_id").toVariant().toLongLong();
+    Q_UNUSED(afterMsgId);
     qDebug() << "[ChatPage] onPrivateMessagesRsp 收到服务端历史消息:"
              << payload.value("messages").toArray().size() << "条, contactId:" << contactId;
-    applyPrivateMessages(contactId, payload.value("messages").toArray());
+    applyPrivateMessages(contactId, payload.value("messages").toArray(), incremental);
 }
 
 void ChatPage::onSendPrivateMessageRsp(const QJsonObject &payload)
@@ -1182,6 +1213,48 @@ void ChatPage::restoreCurrentConversation(int contactId)
     }
 
     _currentConversation = qBound(0, _currentConversation, qMax(0, _conversations.size() - 1));
+}
+
+void ChatPage::hydrateConversationMessages(Conversation &conversation)
+{
+    const QString contactName = conversation.contact.name;
+    const QColor incomingColor = conversation.contact.avatarColor.isValid()
+        ? conversation.contact.avatarColor
+        : avatarColorForName(contactName.isEmpty() ? QString::number(conversation.contact.id) : contactName);
+    const QColor outgoingColor = avatarColorForName(_currentUserName.isEmpty()
+        ? QString::number(_currentUserId)
+        : _currentUserName);
+
+    for (MessageItem &message : conversation.messages) {
+        if (message.outgoing) {
+            if (message.senderName.isEmpty()) {
+                message.senderName = _currentUserName;
+            }
+            message.avatarColor = outgoingColor;
+        } else {
+            if (message.senderName.isEmpty()) {
+                message.senderName = contactName;
+            }
+            message.avatarColor = incomingColor;
+        }
+    }
+}
+
+void ChatPage::ensureConversationMessagesLoaded(int index)
+{
+    if (index < 0 || index >= _conversations.size()) {
+        return;
+    }
+
+    if (!_conversations[index].messages.isEmpty()) {
+        hydrateConversationMessages(_conversations[index]);
+        return;
+    }
+
+    _conversations[index].messages = LocalDb::instance().loadConversationMessages(_conversations[index].contact.id, _currentUserId);
+    hydrateConversationMessages(_conversations[index]);
+    qDebug() << "[ChatPage] ensureConversationMessagesLoaded 从本地数据库恢复会话消息:"
+             << _conversations[index].messages.size() << "条, contactId:" << _conversations[index].contact.id;
 }
 
 void ChatPage::updateNavigationIcons()

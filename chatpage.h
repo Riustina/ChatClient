@@ -96,12 +96,14 @@ private:
     void refreshFriendRequestList();
     void applyFriendList(const QJsonArray &friends);
     MessageItem messageFromJson(const QJsonObject &obj) const;
-    void applyPrivateMessages(int contactId, const QJsonArray &messages);
+    void applyPrivateMessages(int contactId, const QJsonArray &messages, bool incremental);
     void appendPrivateMessage(const QJsonObject &obj, bool moveToTop);
     void ensureConversationForFriend(FriendRequestItem &item);
     void restoreCurrentConversation(int contactId);
+    void hydrateConversationMessages(Conversation &conversation);
+    void ensureConversationMessagesLoaded(int index);
     void requestFriendRequests();
-    void requestPrivateMessages(int contactId, int limit = 50);
+    void requestPrivateMessages(int contactId, int limit = 50, qint64 afterMsgId = -1);
     void requestMarkConversationRead(int contactId);
     bool resolveAddFriendTarget(const QString &text, ContactItem &contact) const;
     void updateNavigationIcons();

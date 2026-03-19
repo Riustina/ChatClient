@@ -258,6 +258,64 @@ bool LocalDb::saveFriendRequests(const QVector<FriendRequestItem> &requests, int
     return true;
 }
 
+bool LocalDb::setSyncValue(const QString &key, const QString &value)
+{
+    QSqlDatabase db = QSqlDatabase::database(kConnectionName);
+    if (!db.isOpen()) {
+        _lastError = QStringLiteral("鏈湴鏁版嵁搴撴湭鎵撳紑");
+        return false;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(
+        "INSERT OR REPLACE INTO sync_state(key, value, updated_at) "
+        "VALUES(?, ?, CURRENT_TIMESTAMP)"));
+    query.addBindValue(key);
+    query.addBindValue(value);
+    if (!query.exec()) {
+        _lastError = query.lastError().text();
+        qWarning() << "[LocalDb] 淇濆瓨 sync_state 澶辫触:" << _lastError;
+        return false;
+    }
+    return true;
+}
+
+QString LocalDb::syncValue(const QString &key, const QString &defaultValue)
+{
+    QSqlDatabase db = QSqlDatabase::database(kConnectionName);
+    if (!db.isOpen()) {
+        _lastError = QStringLiteral("鏈湴鏁版嵁搴撴湭鎵撳紑");
+        return defaultValue;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral("SELECT value FROM sync_state WHERE key = ? LIMIT 1"));
+    query.addBindValue(key);
+    if (!query.exec()) {
+        _lastError = query.lastError().text();
+        qWarning() << "[LocalDb] 鏌ヨ sync_state 澶辫触:" << _lastError;
+        return defaultValue;
+    }
+
+    if (!query.next()) {
+        return defaultValue;
+    }
+    return query.value(0).toString();
+}
+
+qint64 LocalDb::conversationCursor(int contactId) const
+{
+    auto *self = const_cast<LocalDb *>(this);
+    bool ok = false;
+    const qint64 cursor = self->syncValue(QStringLiteral("private_message_cursor_%1").arg(contactId), QStringLiteral("0")).toLongLong(&ok);
+    return ok ? cursor : 0;
+}
+
+bool LocalDb::setConversationCursor(int contactId, qint64 msgId)
+{
+    return setSyncValue(QStringLiteral("private_message_cursor_%1").arg(contactId), QString::number(msgId));
+}
+
 bool LocalDb::replaceConversationMessages(int contactId, const QVector<MessageItem> &messages, int currentUserId)
 {
     QSqlDatabase db = QSqlDatabase::database(kConnectionName);
@@ -293,6 +351,14 @@ bool LocalDb::replaceConversationMessages(int contactId, const QVector<MessageIt
         return false;
     }
 
+    qint64 maxMsgId = 0;
+    for (const MessageItem &message : messages) {
+        maxMsgId = qMax(maxMsgId, static_cast<qint64>(message.id));
+    }
+    if (maxMsgId > 0) {
+        setConversationCursor(contactId, maxMsgId);
+    }
+
     return true;
 }
 
@@ -304,7 +370,14 @@ bool LocalDb::upsertMessage(int contactId, const MessageItem &message, int curre
         return false;
     }
 
-    return upsertMessageItem(contactId, message, currentUserId);
+    const bool ok = upsertMessageItem(contactId, message, currentUserId);
+    if (ok && message.id > 0) {
+        const qint64 currentCursor = conversationCursor(contactId);
+        if (message.id > currentCursor) {
+            setConversationCursor(contactId, message.id);
+        }
+    }
+    return ok;
 }
 
 bool LocalDb::upsertContactSummaryItem(const ContactItem &contact)
@@ -508,6 +581,14 @@ QVector<MessageItem> LocalDb::loadConversationMessages(int contactId, int curren
             item.timestamp = QDateTime::currentDateTime();
         }
         messages.push_back(item);
+    }
+
+    qint64 maxMsgId = 0;
+    for (const MessageItem &item : messages) {
+        maxMsgId = qMax(maxMsgId, static_cast<qint64>(item.id));
+    }
+    if (maxMsgId > 0 && conversationCursor(contactId) < maxMsgId) {
+        setConversationCursor(contactId, maxMsgId);
     }
 
     return messages;

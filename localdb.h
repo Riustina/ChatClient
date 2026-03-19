@@ -21,6 +21,10 @@ public:
     bool saveFriendRequests(const QVector<FriendRequestItem> &requests, int currentUserId);
     bool replaceConversationMessages(int contactId, const QVector<MessageItem> &messages, int currentUserId);
     bool upsertMessage(int contactId, const MessageItem &message, int currentUserId);
+    bool setSyncValue(const QString &key, const QString &value);
+    QString syncValue(const QString &key, const QString &defaultValue = QString());
+    qint64 conversationCursor(int contactId) const;
+    bool setConversationCursor(int contactId, qint64 msgId);
     QVector<ContactItem> loadFriendList();
     QVector<FriendRequestItem> loadFriendRequests(int currentUserId);
     QVector<MessageItem> loadConversationMessages(int contactId, int currentUserId);
