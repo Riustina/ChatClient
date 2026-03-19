@@ -413,6 +413,7 @@ void ChatPage::bindConversation(int index)
     _messageListWidget->setMessages(_conversations[index].messages);
     syncContactList();
     updateChatUnreadNotification();
+    requestMarkConversationRead(_conversations[index].contact.id);
 }
 
 void ChatPage::applyEmptyConversationState()
@@ -733,6 +734,7 @@ void ChatPage::applyFriendList(const QJsonArray &friends)
         conversation.contact.name = obj.value("name").toString();
         conversation.contact.lastMessage = obj.value("last_message").toString();
         conversation.contact.timeText = obj.value("last_time").toString();
+        conversation.contact.unreadCount = obj.value("unread_count").toInt();
         conversation.contact.avatarColor = avatarColorForName(
             conversation.contact.name.isEmpty() ? QString::number(uid) : conversation.contact.name);
         rebuilt.push_back(conversation);
@@ -1025,6 +1027,17 @@ void ChatPage::requestPrivateMessages(int contactId, int limit)
     obj["contact_id"] = contactId;
     obj["limit"] = limit;
     emit TcpMgr::getInstance().sig_send_data(ID_GET_PRIVATE_MESSAGES_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+}
+
+void ChatPage::requestMarkConversationRead(int contactId)
+{
+    if (_currentUserId <= 0 || contactId <= 0) {
+        return;
+    }
+
+    QJsonObject obj;
+    obj["contact_id"] = contactId;
+    emit TcpMgr::getInstance().sig_send_data(ID_MARK_PRIVATE_MESSAGES_READ_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
 }
 
 void ChatPage::onPrivateMessagesRsp(const QJsonObject &payload)

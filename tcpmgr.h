@@ -41,6 +41,7 @@ signals:
     void sig_private_messages_rsp(const QJsonObject &payload);
     void sig_send_private_message_rsp(const QJsonObject &payload);
     void sig_private_message_push(const QJsonObject &payload);
+    void sig_mark_private_messages_read_rsp(const QJsonObject &payload);
 
 private:
     explicit TcpMgr();

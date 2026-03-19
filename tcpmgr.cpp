@@ -221,6 +221,13 @@ void TcpMgr::initHandlers()
             emit sig_private_message_push(obj);
         });
     };
+
+    _handlers[ID_MARK_PRIVATE_MESSAGES_READ_RSP] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        jsonForwarder(id, data, [this](const QJsonObject &obj) {
+            emit sig_mark_private_messages_read_rsp(obj);
+        });
+    };
 }
 
 // —————————————————————————————————————————————————————————————————————————

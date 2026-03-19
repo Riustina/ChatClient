@@ -102,6 +102,7 @@ private:
     void restoreCurrentConversation(int contactId);
     void requestFriendRequests();
     void requestPrivateMessages(int contactId, int limit = 50);
+    void requestMarkConversationRead(int contactId);
     bool resolveAddFriendTarget(const QString &text, ContactItem &contact) const;
     void updateNavigationIcons();
     void updateFriendRequestBadge();
