@@ -4,6 +4,8 @@
 #include "global.h"
 #include <QDialog>
 
+class QCheckBox;
+
 namespace Ui {
 class LoginDialog;
 }
@@ -22,8 +24,12 @@ private:
     int _uid;
     QString _token;
     bool _loginRequestInFlight = false;
+    QCheckBox *_rememberPasswordCheckBox = nullptr;
 
     void initHttpHandlers();
+    void loadRememberedCredentials();
+    void saveRememberedCredentials();
+    QString settingsFilePath() const;
 
 signals:
     void switchRegister(); // 切换到注册界面的信号
@@ -34,6 +40,7 @@ private slots:
     void slot_login_mod_http_finished(ReqId id, QString res, ErrorCodes err);
     void slot_tcp_con_finish(bool bsuccess);
     void slot_login_failed(int err);
+    void slot_chat_login_success();
 };
 
 #endif // LOGINDIALOG_H
