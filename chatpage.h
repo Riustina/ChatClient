@@ -54,7 +54,6 @@ private slots:
     void onSearchTextChanged(const QString &text);
     void onPopupAddFriendClicked(const QString &text);
     void onPopupContactClicked(int contactId);
-    void onMockFriendRequestClicked();
     void onFriendRequestAccepted(int requestId);
     void onFriendRequestRejected(int requestId);
     void onSearchUserRsp(const QJsonObject &payload);
@@ -85,7 +84,6 @@ private:
 
     void setupUiExtensions();
     void setupNavigation();
-    void setupMockData();
     void setupFriendRequestPage();
     void applyEmptyConversationState();
     void bindConversation(int index);
@@ -101,15 +99,11 @@ private:
     QDateTime latestTimestamp(const Conversation &conversation) const;
     MessageItem createOutgoingTextMessage(const QString &text);
     MessageItem createOutgoingImageMessage(const QImage &image);
-    MessageItem createIncomingMockMessage();
     QByteArray encodeImageForUpload(const QImage &image) const;
     void populateImageMessage(MessageItem &item) const;
     QString formatMessagePreview(const MessageItem &message) const;
     QString formatMessageTime(const QDateTime &timestamp) const;
     QColor avatarColorForName(const QString &name) const;
-    void addOutgoingFriendRequest(const QString &name);
-    void addOutgoingFriendRequest(const ContactItem &contact, const QString &remark = QString());
-    void addIncomingFriendRequest(const QString &name);
     void refreshFriendRequestList();
     void applyFriendList(const QJsonArray &friends);
     MessageItem messageFromJson(const QJsonObject &obj) const;
@@ -149,7 +143,6 @@ private:
     MessageListWidget *_messageListWidget;
     ChatInputEdit *_chatInputEdit;
     SearchPopupWidget *_searchPopup;
-    QPushButton *_mockFriendRequestButton = nullptr;
     QScrollArea *_friendRequestScrollArea = nullptr;
     QWidget *_friendRequestListWidget = nullptr;
     QVBoxLayout *_friendRequestListLayout = nullptr;
