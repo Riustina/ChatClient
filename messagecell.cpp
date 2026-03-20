@@ -7,6 +7,8 @@
 #include <QFontMetrics>
 #include <QGuiApplication>
 #include <QGraphicsDropShadowEffect>
+#include <QDialog>
+#include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
@@ -49,14 +51,20 @@ QPixmap buildAvatarPixmap(const QString &name, const QColor &color, const QSize 
 
 QPixmap roundedPixmap(const QImage &image, const QSize &size)
 {
-    QPixmap pixmap(size);
+    const qreal dpr = qApp ? qApp->devicePixelRatio() : 1.0;
+    QPixmap pixmap(size * dpr);
+    pixmap.setDevicePixelRatio(dpr);
     pixmap.fill(Qt::transparent);
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     QPainterPath path;
-    path.addRoundedRect(pixmap.rect(), 14, 14);
+    path.addRoundedRect(QRectF(0, 0, size.width(), size.height()), 14, 14);
     painter.setClipPath(path);
-    painter.drawImage(pixmap.rect(), image);
+    const QImage scaled = image.isNull()
+        ? QImage(size * dpr, QImage::Format_ARGB32_Premultiplied)
+        : image.scaled(size * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    painter.drawImage(QRectF(0, 0, size.width(), size.height()), scaled);
     return pixmap;
 }
 
@@ -199,6 +207,48 @@ private:
     QTextBrowser *_browser;
 };
 
+class ImagePreviewDialog final : public QDialog {
+public:
+    explicit ImagePreviewDialog(const QImage &image, QWidget *parent = nullptr)
+        : QDialog(parent)
+    {
+        setAttribute(Qt::WA_DeleteOnClose, true);
+        setWindowFlag(Qt::FramelessWindowHint, true);
+        setModal(true);
+        setStyleSheet("background:rgba(17,24,39,220);");
+
+        auto *layout = new QVBoxLayout(this);
+        layout->setContentsMargins(24, 24, 24, 24);
+
+        auto *label = new QLabel(this);
+        label->setAlignment(Qt::AlignCenter);
+        label->setStyleSheet("background:transparent;");
+        layout->addWidget(label, 1);
+
+        const QSize available = QGuiApplication::primaryScreen()
+            ? QGuiApplication::primaryScreen()->availableGeometry().size() - QSize(120, 120)
+            : QSize(1200, 800);
+        label->setPixmap(QPixmap::fromImage(
+            image.scaled(available, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+    }
+
+protected:
+    void mousePressEvent(QMouseEvent *event) override
+    {
+        QDialog::mousePressEvent(event);
+        close();
+    }
+
+    void keyPressEvent(QKeyEvent *event) override
+    {
+        if (event->key() == Qt::Key_Escape) {
+            close();
+            return;
+        }
+        QDialog::keyPressEvent(event);
+    }
+};
+
 } // namespace
 
 // ===========================================================================
@@ -232,14 +282,27 @@ MessageCell::MessageCell(QWidget *parent)
             this, &MessageCell::showTextContextMenu);
 
     _imageLabel->setScaledContents(true);
+    _imageLabel->installEventFilter(this);
     _imageLabel->hide();
 }
 
 MessageCell::~MessageCell() = default;
 
+bool MessageCell::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == _imageLabel && event->type() == QEvent::MouseButtonDblClick) {
+        if (!_currentImage.isNull()) {
+            showImagePreview();
+            return true;
+        }
+    }
+    return QWidget::eventFilter(watched, event);
+}
+
 void MessageCell::setMessage(const MessageItem &message, int availableWidth)
 {
     updateAvatar(message);
+    _currentImage = message.image;
 
     const int maxBubbleWidth = qMin(kBubbleMaxWidth,
                                     qMax(80, availableWidth - 2 * (kSideMargin + kAvatarSize + 20)));
@@ -321,4 +384,14 @@ void MessageCell::showTextContextMenu(const QPoint &pos)
     const QPoint globalPos = _textBrowser->viewport()->mapToGlobal(pos);
     auto *popup = new TextActionPopup(_textBrowser, globalPos);
     popup->show();
+}
+
+void MessageCell::showImagePreview() const
+{
+    if (_currentImage.isNull()) {
+        return;
+    }
+
+    auto *dialog = new ImagePreviewDialog(_currentImage, window());
+    dialog->showFullScreen();
 }
