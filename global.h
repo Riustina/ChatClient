@@ -29,12 +29,14 @@ enum ReqId {
     ID_MARK_PRIVATE_MESSAGES_READ_RSP = 1023,
     ID_GET_FRIEND_LIST_REQ = 1024,
     ID_GET_FRIEND_LIST_RSP = 1025,
+    ID_UPLOAD_IMAGE = 1026,
 };
 
 enum Modules {
     REGISTERMOD = 0,
     RESETMOD = 1,
     LOGINMOD = 2,
+    CHATMOD = 3,
 };
 
 struct ServerInfo{

@@ -32,6 +32,7 @@ signals:
     void sig_reg_mod_http_finished(ReqId id, QString res, ErrorCodes err);
     void sig_reset_mod_http_finished(ReqId id, QString res, ErrorCodes err);
     void sig_login_mod_http_finished(ReqId id, QString res, ErrorCodes err);
+    void sig_chat_mod_http_finished(ReqId id, QString res, ErrorCodes err);
 };
 
 #endif // HTTPMGR_H

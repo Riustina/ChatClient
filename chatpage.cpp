@@ -5,6 +5,7 @@
 #include "chatinputedit.h"
 #include "contactlistwidget.h"
 #include "friendrequestitemwidget.h"
+#include "httpmgr.h"
 #include "localdb.h"
 #include "messagelistwidget.h"
 #include "searchpopupwidget.h"
@@ -29,6 +30,7 @@
 #include <QJsonObject>
 #include <QRandomGenerator>
 #include <QScrollArea>
+#include <QUuid>
 #include <QVBoxLayout>
 #include <QStyle>
 #include <algorithm>
@@ -181,17 +183,21 @@ void ChatPage::onSendClicked()
         if (encodedImage.isEmpty()) {
             QMessageBox::warning(this,
                                  QStringLiteral("发送失败"),
-                                 QStringLiteral("图片过大或编码失败，请尝试更小的图片。"));
+                                 QStringLiteral("图片过大，请尝试更小的图片。"));
             return;
         }
 
+        const QString uploadId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        _pendingImageUploadTargets.insert(uploadId, _conversations[_currentConversation].contact.id);
         QJsonObject imageObj;
-        imageObj["to_uid"] = _conversations[_currentConversation].contact.id;
-        imageObj["content_type"] = "image";
+        imageObj["upload_id"] = uploadId;
+        imageObj["content_encoding"] = "zlib+png";
         imageObj["content"] = QString::fromLatin1(encodedImage);
-        emit TcpMgr::getInstance().sig_send_data(
-            ID_SEND_PRIVATE_MESSAGE_REQ,
-            QString::fromUtf8(QJsonDocument(imageObj).toJson(QJsonDocument::Compact)));
+        HttpMgr::getInstance().PostHttpReq(
+            QUrl(gate_url_prefix + "/upload_image"),
+            imageObj,
+            ReqId::ID_UPLOAD_IMAGE,
+            Modules::CHATMOD);
     }
     if (!text.isEmpty()) {
         QJsonObject obj;
@@ -388,6 +394,7 @@ void ChatPage::setupUiExtensions()
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_private_messages_rsp, this, &ChatPage::onPrivateMessagesRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_send_private_message_rsp, this, &ChatPage::onSendPrivateMessageRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_private_message_push, this, &ChatPage::onPrivateMessagePush);
+    connect(&HttpMgr::getInstance(), &HttpMgr::sig_chat_mod_http_finished, this, &ChatPage::onChatHttpFinished);
 }
 
 void ChatPage::setupFriendRequestPage()
@@ -599,28 +606,22 @@ QByteArray ChatPage::encodeImageForUpload(const QImage &image) const
         return {};
     }
 
-    constexpr int kMaxEncodedBytes = 28 * 1024;
-    int quality = 85;
-    QSize targetSize = image.size();
+    constexpr int kMaxEncodedBytes = 8 * 1024 * 1024;
+    const QImage normalized = image.convertToFormat(QImage::Format_RGBA8888);
 
-    while (quality >= 45) {
-        const QImage candidate = image.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        QByteArray jpegBytes;
-        QBuffer buffer(&jpegBytes);
-        buffer.open(QIODevice::WriteOnly);
-        if (!candidate.save(&buffer, "JPG", quality)) {
+    QByteArray pngBytes;
+    {
+        QBuffer pngBuffer(&pngBytes);
+        pngBuffer.open(QIODevice::WriteOnly);
+        if (!normalized.save(&pngBuffer, "PNG")) {
             return {};
         }
+    }
 
-        const QByteArray encoded = jpegBytes.toBase64();
-        if (encoded.size() <= kMaxEncodedBytes) {
-            return encoded;
-        }
-
-        quality -= 10;
-        targetSize = targetSize.scaled(qMax(320, targetSize.width() * 4 / 5),
-                                       qMax(320, targetSize.height() * 4 / 5),
-                                       Qt::KeepAspectRatio);
+    const QByteArray compressed = qCompress(pngBytes, 9);
+    const QByteArray encoded = compressed.toBase64();
+    if (encoded.size() <= kMaxEncodedBytes) {
+        return encoded;
     }
 
     return {};
@@ -1289,6 +1290,48 @@ void ChatPage::onPrivateMessagePush(const QJsonObject &payload)
     }
 
     appendPrivateMessage(payload.value("message").toObject(), true);
+}
+
+void ChatPage::onChatHttpFinished(ReqId id, QString res, ErrorCodes err)
+{
+    if (id != ReqId::ID_UPLOAD_IMAGE) {
+        return;
+    }
+
+    if (err != ErrorCodes::SUCCESS) {
+        QMessageBox::warning(this, QStringLiteral("上传失败"), QStringLiteral("图片上传失败，请稍后再试。"));
+        return;
+    }
+
+    const QJsonDocument doc = QJsonDocument::fromJson(res.toUtf8());
+    if (doc.isNull() || !doc.isObject()) {
+        QMessageBox::warning(this, QStringLiteral("上传失败"), QStringLiteral("图片上传回包解析失败。"));
+        return;
+    }
+
+    const QJsonObject obj = doc.object();
+    if (obj.value("error").toInt() != ErrorCodes::SUCCESS) {
+        QMessageBox::warning(this,
+                             QStringLiteral("上传失败"),
+                             obj.value("message").toString(QStringLiteral("图片上传失败，请稍后再试。")));
+        return;
+    }
+
+    const QString uploadId = obj.value("upload_id").toString();
+    const QString path = obj.value("path").toString();
+    if (uploadId.isEmpty() || path.isEmpty() || !_pendingImageUploadTargets.contains(uploadId)) {
+        QMessageBox::warning(this, QStringLiteral("上传失败"), QStringLiteral("图片上传结果无效。"));
+        return;
+    }
+
+    const int toUid = _pendingImageUploadTargets.take(uploadId);
+    QJsonObject sendObj;
+    sendObj["to_uid"] = toUid;
+    sendObj["content_type"] = "image";
+    sendObj["content"] = path;
+    emit TcpMgr::getInstance().sig_send_data(
+        ID_SEND_PRIVATE_MESSAGE_REQ,
+        QString::fromUtf8(QJsonDocument(sendObj).toJson(QJsonDocument::Compact)));
 }
 
 void ChatPage::ensureConversationForFriend(FriendRequestItem &item)

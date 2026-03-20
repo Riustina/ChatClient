@@ -4,9 +4,11 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QByteArray>
+#include <QHash>
 #include <QSet>
 #include <QVector>
 #include <QWidget>
+#include "global.h"
 #include "chattypes.h"
 
 QT_BEGIN_NAMESPACE
@@ -62,6 +64,7 @@ private slots:
     void onPrivateMessagesRsp(const QJsonObject &payload);
     void onSendPrivateMessageRsp(const QJsonObject &payload);
     void onPrivateMessagePush(const QJsonObject &payload);
+    void onChatHttpFinished(ReqId id, QString res, ErrorCodes err);
 
 private:
     struct Conversation {
@@ -127,6 +130,7 @@ private:
     QVector<Conversation> _conversations;
     QVector<FriendRequestItem> _friendRequests;
     QVector<ContactItem> _searchResults;
+    QHash<QString, int> _pendingImageUploadTargets;
     QSet<int> _knownPendingIncomingRequestIds;
     ContactItem _pendingAddFriendTarget;
     QString _pendingAddFriendRemark;
