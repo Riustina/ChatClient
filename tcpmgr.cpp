@@ -102,6 +102,11 @@ TcpMgr::TcpMgr()
     initHandlers();
 }
 
+bool TcpMgr::isChatAvailable() const
+{
+    return _chat_logged_in && _socket.state() == QAbstractSocket::ConnectedState;
+}
+
 void TcpMgr::initHandlers()
 {
     // 处理登录回包 ID_CHAT_LOGIN_RSP

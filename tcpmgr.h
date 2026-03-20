@@ -20,6 +20,7 @@ class TcpMgr : public QObject,
 
 public:
     ~TcpMgr() = default;
+    bool isChatAvailable() const;
 
 public slots:
     void slot_tcp_connect(ServerInfo si);

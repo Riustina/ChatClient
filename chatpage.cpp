@@ -1,4 +1,4 @@
-#include "chatpage.h"
+﻿#include "chatpage.h"
 #include "ui_chatpage.h"
 
 #include "addfrienddialog.h"
@@ -30,6 +30,7 @@
 #include <QJsonObject>
 #include <QRandomGenerator>
 #include <QScrollArea>
+#include <QTimer>
 #include <QUuid>
 #include <QVBoxLayout>
 #include <QStyle>
@@ -179,6 +180,8 @@ void ChatPage::onSendClicked()
         return;
     }
 
+    const bool chatAvailable = TcpMgr::getInstance().isChatAvailable();
+
     if (!pastedImage.isNull()) {
         MessageItem message = createOutgoingImageMessage(pastedImage);
         appendPendingOutgoingMessage(contactId, message);
@@ -186,8 +189,8 @@ void ChatPage::onSendClicked()
         if (encodedImage.isEmpty()) {
             updatePendingMessageState(message.clientMsgId, MessageSendState::Failed);
             QMessageBox::warning(this,
-                                 QStringLiteral("发送失败"),
-                                 QStringLiteral("图片过大，请尝试更小的图片。"));
+                                 QString::fromUtf8(u8"\u53d1\u9001\u5931\u8d25"),
+                                 QString::fromUtf8(u8"\u56fe\u7247\u8fc7\u5927\uff0c\u8bf7\u5c1d\u8bd5\u66f4\u5c0f\u7684\u56fe\u7247\u3002"));
             return;
         }
 
@@ -209,12 +212,16 @@ void ChatPage::onSendClicked()
     if (!text.isEmpty()) {
         MessageItem message = createOutgoingTextMessage(text);
         appendPendingOutgoingMessage(contactId, message);
+        if (!chatAvailable) {
+            updatePendingMessageState(message.clientMsgId, MessageSendState::Failed);
+        } else {
         QJsonObject obj;
         obj["to_uid"] = contactId;
         obj["content_type"] = "text";
         obj["content"] = text;
         obj["client_msg_id"] = message.clientMsgId;
         emit TcpMgr::getInstance().sig_send_data(ID_SEND_PRIVATE_MESSAGE_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+        }
     }
 
     _chatInputEdit->clear();
@@ -293,13 +300,17 @@ void ChatPage::onPopupContactClicked(int contactId)
         }
 
         if (request.state == FriendRequestState::Added) {
-            QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("你们已经是好友了。"));
+            QMessageBox::information(this,
+                                     QString::fromUtf8(u8"\u63d0\u793a"),
+                                     QString::fromUtf8(u8"\u4f60\u4eec\u5df2\u7ecf\u662f\u597d\u53cb\u4e86\u3002"));
             hideSearchPopup();
             return;
         }
 
         if (request.state == FriendRequestState::Pending) {
-            QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("你已经向对方发送过好友申请，请等待处理。"));
+            QMessageBox::information(this,
+                                     QString::fromUtf8(u8"\u63d0\u793a"),
+                                     QString::fromUtf8(u8"\u4f60\u5df2\u7ecf\u5411\u5bf9\u65b9\u53d1\u9001\u8fc7\u597d\u53cb\u7533\u8bf7\uff0c\u8bf7\u7b49\u5f85\u5904\u7406\u3002"));
             hideSearchPopup();
             return;
         }
@@ -952,8 +963,8 @@ void ChatPage::onAddFriendRsp(const QJsonObject &payload)
     if (payload.value("error").toInt() != 0) {
         const QString message = payload.value("message").toString().trimmed();
         QMessageBox::warning(this,
-                             QStringLiteral("添加好友失败"),
-                             message.isEmpty() ? QStringLiteral("当前无法发送好友申请，请稍后再试。") : message);
+                             QString::fromUtf8(u8"\u6dfb\u52a0\u597d\u53cb\u5931\u8d25"),
+                             message.isEmpty() ? QString::fromUtf8(u8"\u5f53\u524d\u65e0\u6cd5\u53d1\u9001\u597d\u53cb\u7533\u8bf7\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002") : message);
         _pendingAddFriendTarget = ContactItem{};
         _pendingAddFriendRemark.clear();
         return;
@@ -1290,10 +1301,13 @@ void ChatPage::onSendPrivateMessageRsp(const QJsonObject &payload)
 {
     const QString clientMsgId = payload.value("client_msg_id").toString();
     if (payload.value("error").toInt() != 0) {
+        if (!clientMsgId.isEmpty()) {
+            updatePendingMessageState(clientMsgId, MessageSendState::Failed);
+        }
         const QString message = payload.value("message").toString().trimmed();
         QMessageBox::warning(this,
-                             QStringLiteral("发送失败"),
-                             message.isEmpty() ? QStringLiteral("消息发送失败，请稍后再试。") : message);
+                             QString::fromUtf8(u8"\u53d1\u9001\u5931\u8d25"),
+                             message.isEmpty() ? QString::fromUtf8(u8"\u8bf7\u91cd\u8bd5\u3002") : message);
         return;
     }
 
@@ -1329,14 +1343,30 @@ void ChatPage::onChatHttpFinished(ReqId id, QString res, ErrorCodes err)
         }
     };
 
+    auto failAllPendingUploads = [this]() {
+        const QList<PendingImageUpload> pendings = _pendingImageUploadTargets.values();
+        _pendingImageUploadTargets.clear();
+        for (const PendingImageUpload &pending : pendings) {
+            if (!pending.clientMsgId.isEmpty()) {
+                updatePendingMessageState(pending.clientMsgId, MessageSendState::Failed);
+            }
+        }
+    };
+
     if (err != ErrorCodes::SUCCESS) {
-        QMessageBox::warning(this, QStringLiteral("上传失败"), QStringLiteral("图片上传失败，请稍后再试。"));
+        failAllPendingUploads();
+        QMessageBox::warning(this,
+                             QString::fromUtf8(u8"\u4e0a\u4f20\u5931\u8d25"),
+                             QString::fromUtf8(u8"\u56fe\u7247\u4e0a\u4f20\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002"));
         return;
     }
 
     const QJsonDocument doc = QJsonDocument::fromJson(res.toUtf8());
     if (doc.isNull() || !doc.isObject()) {
-        QMessageBox::warning(this, QStringLiteral("上传失败"), QStringLiteral("图片上传回包解析失败。"));
+        failAllPendingUploads();
+        QMessageBox::warning(this,
+                             QString::fromUtf8(u8"\u4e0a\u4f20\u5931\u8d25"),
+                             QString::fromUtf8(u8"\u56fe\u7247\u4e0a\u4f20\u56de\u5305\u89e3\u6790\u5931\u8d25\u3002"));
         return;
     }
 
@@ -1345,17 +1375,29 @@ void ChatPage::onChatHttpFinished(ReqId id, QString res, ErrorCodes err)
     if (obj.value("error").toInt() != ErrorCodes::SUCCESS) {
         failUpload(uploadId);
         QMessageBox::warning(this,
-                             QStringLiteral("上传失败"),
-                             obj.value("message").toString(QStringLiteral("图片上传失败，请稍后再试。")));
+                             QString::fromUtf8(u8"\u4e0a\u4f20\u5931\u8d25"),
+                             obj.value("message").toString(QString::fromUtf8(u8"\u56fe\u7247\u4e0a\u4f20\u5931\u8d25\uff0c\u8bf7\u7a0d\u540e\u518d\u8bd5\u3002")));
         return;
     }
+
     const QString path = obj.value("path").toString();
     if (uploadId.isEmpty() || path.isEmpty() || !_pendingImageUploadTargets.contains(uploadId)) {
-        QMessageBox::warning(this, QStringLiteral("上传失败"), QStringLiteral("图片上传结果无效。"));
+        failUpload(uploadId);
+        QMessageBox::warning(this,
+                             QString::fromUtf8(u8"\u4e0a\u4f20\u5931\u8d25"),
+                             QString::fromUtf8(u8"\u56fe\u7247\u4e0a\u4f20\u7ed3\u679c\u65e0\u6548\u3002"));
         return;
     }
 
     const PendingImageUpload pending = _pendingImageUploadTargets.take(uploadId);
+    if (!TcpMgr::getInstance().isChatAvailable()) {
+        updatePendingMessageState(pending.clientMsgId, MessageSendState::Failed);
+        QMessageBox::warning(this,
+                             QString::fromUtf8(u8"\u53d1\u9001\u5931\u8d25"),
+                             QString::fromUtf8(u8"\u804a\u5929\u670d\u52a1\u5668\u8fde\u63a5\u5df2\u65ad\u5f00\uff0c\u8bf7\u91cd\u65b0\u767b\u5f55\u540e\u91cd\u8bd5\u3002"));
+        return;
+    }
+
     QJsonObject sendObj;
     sendObj["to_uid"] = pending.contactId;
     sendObj["content_type"] = "image";
@@ -1517,6 +1559,11 @@ void ChatPage::appendPendingOutgoingMessage(int contactId, const MessageItem &me
     _currentConversation = index;
     syncContactList();
     bindConversation(index);
+
+    const QString clientMsgId = message.clientMsgId;
+    QTimer::singleShot(10000, this, [this, clientMsgId]() {
+        updatePendingMessageState(clientMsgId, MessageSendState::Failed);
+    });
 }
 
 bool ChatPage::updatePendingMessageState(const QString &clientMsgId, MessageSendState state, const QJsonObject *serverMessage)
@@ -1531,6 +1578,9 @@ bool ChatPage::updatePendingMessageState(const QString &clientMsgId, MessageSend
                 continue;
             }
 
+            if (state == MessageSendState::Failed && message.sendState != MessageSendState::Sending && serverMessage == nullptr) {
+                return false;
+            }
             message.sendState = state;
             if (serverMessage != nullptr) {
                 MessageItem confirmed = messageFromJson(*serverMessage);
@@ -1573,16 +1623,21 @@ bool ChatPage::retryMessageByClientId(const QString &clientMsgId)
             message.timestamp = QDateTime::currentDateTime();
 
             const int contactId = _conversations[i].contact.id;
+            const bool chatAvailable = TcpMgr::getInstance().isChatAvailable();
             if (message.type == ChatMessageType::Image) {
                 if (!message.text.isEmpty()) {
-                    QJsonObject sendObj;
-                    sendObj["to_uid"] = contactId;
-                    sendObj["content_type"] = "image";
-                    sendObj["content"] = message.text;
-                    sendObj["client_msg_id"] = message.clientMsgId;
-                    emit TcpMgr::getInstance().sig_send_data(
-                        ID_SEND_PRIVATE_MESSAGE_REQ,
-                        QString::fromUtf8(QJsonDocument(sendObj).toJson(QJsonDocument::Compact)));
+                    if (!chatAvailable) {
+                        message.sendState = MessageSendState::Failed;
+                    } else {
+                        QJsonObject sendObj;
+                        sendObj["to_uid"] = contactId;
+                        sendObj["content_type"] = "image";
+                        sendObj["content"] = message.text;
+                        sendObj["client_msg_id"] = message.clientMsgId;
+                        emit TcpMgr::getInstance().sig_send_data(
+                            ID_SEND_PRIVATE_MESSAGE_REQ,
+                            QString::fromUtf8(QJsonDocument(sendObj).toJson(QJsonDocument::Compact)));
+                    }
                 } else {
                     const QByteArray encodedImage = encodeImageForUpload(message.image);
                     if (encodedImage.isEmpty()) {
@@ -1606,15 +1661,23 @@ bool ChatPage::retryMessageByClientId(const QString &clientMsgId)
                         Modules::CHATMOD);
                 }
             } else {
-                QJsonObject obj;
-                obj["to_uid"] = contactId;
-                obj["content_type"] = "text";
-                obj["content"] = message.text;
-                obj["client_msg_id"] = message.clientMsgId;
-                emit TcpMgr::getInstance().sig_send_data(
-                    ID_SEND_PRIVATE_MESSAGE_REQ,
-                    QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+                if (!chatAvailable) {
+                    message.sendState = MessageSendState::Failed;
+                } else {
+                    QJsonObject obj;
+                    obj["to_uid"] = contactId;
+                    obj["content_type"] = "text";
+                    obj["content"] = message.text;
+                    obj["client_msg_id"] = message.clientMsgId;
+                    emit TcpMgr::getInstance().sig_send_data(
+                        ID_SEND_PRIVATE_MESSAGE_REQ,
+                        QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+                }
             }
+
+            QTimer::singleShot(10000, this, [this, newClientMsgId]() {
+                updatePendingMessageState(newClientMsgId, MessageSendState::Failed);
+            });
 
             if (_currentConversation == i) {
                 bindConversation(i);
@@ -1671,8 +1734,9 @@ QString ChatPage::normalizeContactPreview(const QString &text) const
     if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
         || lower.endsWith(".bmp") || lower.endsWith(".webp") || lower.endsWith(".gif")
         || lower.contains("/uploads/chat_images/") || lower.contains("\\uploads\\chat_images\\")
+        || trimmed.contains(QString::fromUtf8(u8"\u56fe\u7247"))
         || trimmed.contains(QStringLiteral("鍥剧墖"))) {
-        return QStringLiteral("[图片]");
+        return QString::fromUtf8(u8"[\u56fe\u7247]");
     }
     return trimmed;
 }
