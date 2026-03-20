@@ -8,17 +8,22 @@
 #include <QGuiApplication>
 #include <QGraphicsDropShadowEffect>
 #include <QDialog>
+#include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
+#include <QResizeEvent>
+#include <QScrollArea>
 #include <QScreen>
 #include <QTextBrowser>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTimer>
 #include <QVBoxLayout>
+#include <QWheelEvent>
 #include <QtMath>
 
 namespace {
@@ -27,6 +32,8 @@ constexpr int kSideMargin     = 8;
 constexpr int kBubblePaddingH = 14;
 constexpr int kBubblePaddingV = 8;
 constexpr int kBubbleMaxWidth = 2250;
+constexpr int kImagePreviewMaxWidth = 360;
+constexpr int kImagePreviewMaxHeight = 300;
 
 QPixmap buildAvatarPixmap(const QString &name, const QColor &color, const QSize &size)
 {
@@ -61,10 +68,13 @@ QPixmap roundedPixmap(const QImage &image, const QSize &size)
     QPainterPath path;
     path.addRoundedRect(QRectF(0, 0, size.width(), size.height()), 14, 14);
     painter.setClipPath(path);
-    const QImage scaled = image.isNull()
-        ? QImage(size * dpr, QImage::Format_ARGB32_Premultiplied)
-        : image.scaled(size * dpr, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
-    painter.drawImage(QRectF(0, 0, size.width(), size.height()), scaled);
+    if (!image.isNull()) {
+        const QImage scaled = image.scaled(size * dpr, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        const QSizeF drawSize = QSizeF(scaled.width() / dpr, scaled.height() / dpr);
+        const QPointF topLeft((size.width() - drawSize.width()) / 2.0,
+                              (size.height() - drawSize.height()) / 2.0);
+        painter.drawImage(QRectF(topLeft, drawSize), scaled);
+    }
     return pixmap;
 }
 
@@ -211,32 +221,110 @@ class ImagePreviewDialog final : public QDialog {
 public:
     explicit ImagePreviewDialog(const QImage &image, QWidget *parent = nullptr)
         : QDialog(parent)
+        , _sourceImage(image)
+        , _scrollArea(new QScrollArea(this))
+        , _imageLabel(new QLabel(_scrollArea))
+        , _scaleFactor(1.0)
+        , _fitToWindow(true)
     {
         setAttribute(Qt::WA_DeleteOnClose, true);
-        setWindowFlag(Qt::FramelessWindowHint, true);
-        setModal(true);
-        setStyleSheet("background:rgba(17,24,39,220);");
+        setWindowTitle(QStringLiteral("图片查看"));
+        setModal(false);
+        resize(1100, 800);
+        setMinimumSize(720, 520);
+        setStyleSheet(
+            "QDialog { background:#101826; }"
+            "QFrame { background:#101826; }"
+            "QLabel { background:transparent; color:white; }"
+            "QPushButton {"
+            "  background:#f8fafc;"
+            "  border:none;"
+            "  border-radius:8px;"
+            "  padding:7px 14px;"
+            "  font: 9pt 'Microsoft YaHei UI';"
+            "  color:#111827;"
+            "}"
+            "QPushButton:hover { background:#e2e8f0; }"
+            "QPushButton:pressed { background:#cbd5e1; }");
 
         auto *layout = new QVBoxLayout(this);
-        layout->setContentsMargins(24, 24, 24, 24);
+        layout->setContentsMargins(18, 18, 18, 18);
+        layout->setSpacing(12);
 
-        auto *label = new QLabel(this);
-        label->setAlignment(Qt::AlignCenter);
-        label->setStyleSheet("background:transparent;");
-        layout->addWidget(label, 1);
+        auto *toolbar = new QFrame(this);
+        auto *toolbarLayout = new QHBoxLayout(toolbar);
+        toolbarLayout->setContentsMargins(0, 0, 0, 0);
+        toolbarLayout->setSpacing(8);
 
-        const QSize available = QGuiApplication::primaryScreen()
-            ? QGuiApplication::primaryScreen()->availableGeometry().size() - QSize(120, 120)
-            : QSize(1200, 800);
-        label->setPixmap(QPixmap::fromImage(
-            image.scaled(available, Qt::KeepAspectRatio, Qt::SmoothTransformation)));
+        auto *fitButton = new QPushButton(QStringLiteral("适应窗口"), toolbar);
+        auto *actualButton = new QPushButton(QStringLiteral("100%"), toolbar);
+        auto *zoomOutButton = new QPushButton(QStringLiteral("-"), toolbar);
+        auto *zoomInButton = new QPushButton(QStringLiteral("+"), toolbar);
+        auto *closeButton = new QPushButton(QStringLiteral("关闭"), toolbar);
+        _zoomLabel = new QLabel(toolbar);
+        _zoomLabel->setMinimumWidth(56);
+
+        toolbarLayout->addWidget(fitButton);
+        toolbarLayout->addWidget(actualButton);
+        toolbarLayout->addWidget(zoomOutButton);
+        toolbarLayout->addWidget(zoomInButton);
+        toolbarLayout->addWidget(_zoomLabel);
+        toolbarLayout->addStretch(1);
+        toolbarLayout->addWidget(closeButton);
+        layout->addWidget(toolbar);
+
+        _scrollArea->setFrameShape(QFrame::NoFrame);
+        _scrollArea->setAlignment(Qt::AlignCenter);
+        _scrollArea->setWidgetResizable(false);
+        _scrollArea->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        _scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+        _scrollArea->setStyleSheet(
+            "QScrollArea { background:transparent; }"
+            "QScrollBar:horizontal, QScrollBar:vertical { background:rgba(255,255,255,0.08); border:none; }"
+            "QScrollBar:horizontal { height:10px; margin:0px 18px 0px 18px; }"
+            "QScrollBar:vertical { width:10px; margin:18px 0px 18px 0px; }"
+            "QScrollBar::handle:horizontal, QScrollBar::handle:vertical { background:rgba(255,255,255,0.38); border-radius:5px; }"
+            "QScrollBar::handle:horizontal:hover, QScrollBar::handle:vertical:hover { background:rgba(255,255,255,0.52); }"
+            "QScrollBar::add-line, QScrollBar::sub-line, QScrollBar::add-page, QScrollBar::sub-page { background:transparent; border:none; }");
+        layout->addWidget(_scrollArea, 1);
+
+        _imageLabel->setAlignment(Qt::AlignCenter);
+        _imageLabel->setStyleSheet("background:transparent;");
+        _imageLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+        _imageLabel->setScaledContents(false);
+        _scrollArea->setWidget(_imageLabel);
+
+        connect(fitButton, &QPushButton::clicked, this, [this]() {
+            _fitToWindow = true;
+            updateImageDisplay();
+        });
+        connect(actualButton, &QPushButton::clicked, this, [this]() {
+            _fitToWindow = false;
+            _scaleFactor = 1.0;
+            updateImageDisplay();
+        });
+        connect(zoomOutButton, &QPushButton::clicked, this, [this]() {
+            _fitToWindow = false;
+            _scaleFactor = qMax(0.1, _scaleFactor / 1.2);
+            updateImageDisplay();
+        });
+        connect(zoomInButton, &QPushButton::clicked, this, [this]() {
+            _fitToWindow = false;
+            _scaleFactor = qMin(8.0, _scaleFactor * 1.2);
+            updateImageDisplay();
+        });
+        connect(closeButton, &QPushButton::clicked, this, &QDialog::close);
+
+        QTimer::singleShot(0, this, [this]() { updateImageDisplay(); });
     }
 
 protected:
-    void mousePressEvent(QMouseEvent *event) override
+    void resizeEvent(QResizeEvent *event) override
     {
-        QDialog::mousePressEvent(event);
-        close();
+        QDialog::resizeEvent(event);
+        if (_fitToWindow) {
+            updateImageDisplay();
+        }
     }
 
     void keyPressEvent(QKeyEvent *event) override
@@ -245,8 +333,84 @@ protected:
             close();
             return;
         }
+        if (event->key() == Qt::Key_Plus || event->key() == Qt::Key_Equal) {
+            _fitToWindow = false;
+            _scaleFactor = qMin(8.0, _scaleFactor * 1.2);
+            updateImageDisplay();
+            return;
+        }
+        if (event->key() == Qt::Key_Minus || event->key() == Qt::Key_Underscore) {
+            _fitToWindow = false;
+            _scaleFactor = qMax(0.1, _scaleFactor / 1.2);
+            updateImageDisplay();
+            return;
+        }
+        if (event->key() == Qt::Key_0) {
+            _fitToWindow = false;
+            _scaleFactor = 1.0;
+            updateImageDisplay();
+            return;
+        }
         QDialog::keyPressEvent(event);
     }
+
+    void wheelEvent(QWheelEvent *event) override
+    {
+        if (event->angleDelta().y() != 0) {
+            _fitToWindow = false;
+            if (event->angleDelta().y() > 0) {
+                _scaleFactor = qMin(8.0, _scaleFactor * 1.15);
+            } else {
+                _scaleFactor = qMax(0.1, _scaleFactor / 1.15);
+            }
+            updateImageDisplay();
+            event->accept();
+            return;
+        }
+        QDialog::wheelEvent(event);
+    }
+
+private:
+    void updateImageDisplay()
+    {
+        if (_sourceImage.isNull()) {
+            _imageLabel->clear();
+            _zoomLabel->setText(QStringLiteral("0%"));
+            return;
+        }
+
+        QSize targetSize = _sourceImage.size();
+        if (_fitToWindow) {
+            const QSize available = _scrollArea->viewport()->size() - QSize(24, 24);
+            if (available.width() <= 0 || available.height() <= 0) {
+                _zoomLabel->setText(QStringLiteral("适应"));
+                return;
+            }
+            targetSize = _sourceImage.size().scaled(available.expandedTo(QSize(1, 1)),
+                                                    Qt::KeepAspectRatio);
+            _scaleFactor = qreal(targetSize.width()) / qMax(1, _sourceImage.width());
+        } else {
+            targetSize = QSize(qRound(_sourceImage.width() * _scaleFactor),
+                               qRound(_sourceImage.height() * _scaleFactor));
+        }
+
+        const qreal dpr = devicePixelRatioF();
+        const QImage scaled = _sourceImage.scaled(targetSize * dpr,
+                                                  Qt::KeepAspectRatio,
+                                                  Qt::SmoothTransformation);
+        QPixmap pixmap = QPixmap::fromImage(scaled);
+        pixmap.setDevicePixelRatio(dpr);
+        _imageLabel->setPixmap(pixmap);
+        _imageLabel->resize(targetSize);
+        _zoomLabel->setText(QStringLiteral("%1%").arg(qRound(_scaleFactor * 100.0)));
+    }
+
+    QImage _sourceImage;
+    QScrollArea *_scrollArea;
+    QLabel *_imageLabel;
+    QLabel *_zoomLabel;
+    qreal _scaleFactor;
+    bool _fitToWindow;
 };
 
 } // namespace
@@ -281,7 +445,7 @@ MessageCell::MessageCell(QWidget *parent)
     connect(_textBrowser, &QTextBrowser::customContextMenuRequested,
             this, &MessageCell::showTextContextMenu);
 
-    _imageLabel->setScaledContents(true);
+    _imageLabel->setScaledContents(false);
     _imageLabel->installEventFilter(this);
     _imageLabel->hide();
 }
@@ -325,7 +489,7 @@ void MessageCell::setMessage(const MessageItem &message, int availableWidth)
         _textBrowser->hide();
         _imageLabel->show();
         const QSize sourceSize = message.image.isNull() ? QSize(200, 140) : message.image.size();
-        const QSize bounded    = sourceSize.scaled(240, 180, Qt::KeepAspectRatio);
+        const QSize bounded    = sourceSize.scaled(kImagePreviewMaxWidth, kImagePreviewMaxHeight, Qt::KeepAspectRatio);
         bubbleWidth   = bounded.width();
         contentHeight = bounded.height();
         _imageLabel->setPixmap(roundedPixmap(message.image, bounded));
@@ -352,7 +516,7 @@ int MessageCell::heightForMessage(const MessageItem &message, int availableWidth
         return qMax(textSize.height() + 2 * kBubblePaddingV, kAvatarSize) + 18;
     }
     const QSize sourceSize = message.image.isNull() ? QSize(200, 140) : message.image.size();
-    return qMax(sourceSize.scaled(240, 180, Qt::KeepAspectRatio).height(), kAvatarSize) + 18;
+    return qMax(sourceSize.scaled(kImagePreviewMaxWidth, kImagePreviewMaxHeight, Qt::KeepAspectRatio).height(), kAvatarSize) + 18;
 }
 
 void MessageCell::updateAvatar(const MessageItem &message)
