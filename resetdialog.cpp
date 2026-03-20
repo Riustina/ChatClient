@@ -1,9 +1,12 @@
 #include "resetdialog.h"
 #include "ui_resetdialog.h"
-#include <QRegularExpression>
-#include <QMessageBox>
+
+#include <QJsonDocument>
 #include <QJsonObject>
 #include <QLineEdit>
+#include <QMessageBox>
+#include <QRegularExpression>
+
 #include "httpmgr.h"
 
 ResetDialog::ResetDialog(QWidget *parent)
@@ -11,7 +14,7 @@ ResetDialog::ResetDialog(QWidget *parent)
     , ui(new Ui::ResetDialog)
 {
     ui->setupUi(this);
-    setWindowTitle(QString::fromUtf8(u8"重置密码"));
+    setWindowTitle(QStringLiteral("重置密码"));
     setAttribute(Qt::WA_StyledBackground, true);
     setStyleSheet(
         "QDialog { background:#ffffff; border-radius:24px; }"
@@ -25,18 +28,19 @@ ResetDialog::ResetDialog(QWidget *parent)
         "QPushButton#resetBtn:pressed { background:#1f2937; }"
         "QPushButton#getCodeBtn, QPushButton#cancelBtn { background:#ffffff; color:#374151; border:1px solid #ddd6e8; }"
         "QPushButton#getCodeBtn:pressed, QPushButton#cancelBtn:pressed { background:#f7f5fb; }");
-    ui->hintLabel->setText(QString::fromUtf8(u8"找回密码"));
-    ui->userLabel->setText(QString::fromUtf8(u8"用户名"));
-    ui->emailLabel->setText(QString::fromUtf8(u8"邮箱"));
-    ui->codeLabel->setText(QString::fromUtf8(u8"验证码"));
-    ui->passLabel->setText(QString::fromUtf8(u8"新密码"));
-    ui->getCodeBtn->setText(QString::fromUtf8(u8"获取验证码"));
-    ui->cancelBtn->setText(QString::fromUtf8(u8"返回登录"));
-    ui->resetBtn->setText(QString::fromUtf8(u8"重置密码"));
-    ui->userLineEdit->setPlaceholderText(QString::fromUtf8(u8"请输入用户名"));
-    ui->emailLineEdit->setPlaceholderText(QString::fromUtf8(u8"请输入邮箱地址"));
-    ui->codeLineEdit->setPlaceholderText(QString::fromUtf8(u8"请输入验证码"));
-    ui->passLineEdit->setPlaceholderText(QString::fromUtf8(u8"请输入新的登录密码"));
+
+    ui->hintLabel->setText(QStringLiteral("找回密码"));
+    ui->userLabel->setText(QStringLiteral("用户名"));
+    ui->emailLabel->setText(QStringLiteral("邮箱"));
+    ui->codeLabel->setText(QStringLiteral("验证码"));
+    ui->passLabel->setText(QStringLiteral("新密码"));
+    ui->getCodeBtn->setText(QStringLiteral("获取验证码"));
+    ui->cancelBtn->setText(QStringLiteral("返回登录"));
+    ui->resetBtn->setText(QStringLiteral("重置密码"));
+    ui->userLineEdit->setPlaceholderText(QStringLiteral("请输入用户名"));
+    ui->emailLineEdit->setPlaceholderText(QStringLiteral("请输入邮箱地址"));
+    ui->codeLineEdit->setPlaceholderText(QStringLiteral("请输入验证码"));
+    ui->passLineEdit->setPlaceholderText(QStringLiteral("请输入新的登录密码"));
     ui->passLineEdit->setEchoMode(QLineEdit::Password);
 
     initHttpHandlers();
@@ -65,34 +69,36 @@ ResetDialog::~ResetDialog()
 
 void ResetDialog::initHttpHandlers()
 {
-    // 获取验证码回包
-    _handlers[ReqId::ID_GET_VERIFY_CODE] = [this](const QJsonObject& jsonObj) {
-        int error = jsonObj.value("error").toInt();
+    _handlers[ReqId::ID_GET_VERIFY_CODE] = [this](const QJsonObject &jsonObj) {
+        const int error = jsonObj.value("error").toInt();
         if (error != ErrorCodes::SUCCESS) {
-            qDebug() << "[ResetDialog.cpp] 函数 [initHttpHandlers] 获取验证码失败: " << jsonObj;
+            qDebug() << "[ResetDialog.cpp] [initHttpHandlers] 获取验证码失败:" << jsonObj;
             startVerifyCountdown(0);
             QMessageBox::warning(this,
-                                 QString::fromUtf8(u8"\u9519\u8bef"),
-                                 QString::fromUtf8(u8"\u83b7\u53d6\u9a8c\u8bc1\u7801\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5"));
+                                 QStringLiteral("错误"),
+                                 QStringLiteral("获取验证码失败，请重试"));
             return;
         }
 
-        auto email = jsonObj.value("email").toString();
+        const QString email = jsonObj.value("email").toString();
         QMessageBox::information(this,
-                                 QString::fromUtf8(u8"\u6210\u529f"),
-                                 QString::fromUtf8(u8"\u9a8c\u8bc1\u7801\u5df2\u53d1\u9001\u5230 ") + email);
+                                 QStringLiteral("成功"),
+                                 QStringLiteral("验证码已发送到 ") + email);
     };
 
-    // 重置密码回包
-    _handlers[ReqId::ID_RESET_PWD] = [this](const QJsonObject& jsonObj) {
-        int error = jsonObj.value("error").toInt();
+    _handlers[ReqId::ID_RESET_PWD] = [this](const QJsonObject &jsonObj) {
+        const int error = jsonObj.value("error").toInt();
         if (error != ErrorCodes::SUCCESS) {
-            qDebug() << "[ResetDialog.cpp] 函数 [initHttpHandlers] 重置密码失败: " << jsonObj;
-            QMessageBox::warning(this, "重置失败", "重置密码失败，请重试");
+            qDebug() << "[ResetDialog.cpp] [initHttpHandlers] 重置密码失败:" << jsonObj;
+            QMessageBox::warning(this,
+                                 QStringLiteral("重置失败"),
+                                 QStringLiteral("重置密码失败，请重试"));
             return;
         }
 
-        QMessageBox::information(this, "成功", "密码重置成功，请重新登录");
+        QMessageBox::information(this,
+                                 QStringLiteral("成功"),
+                                 QStringLiteral("密码重置成功，请重新登录"));
         emit switchToLogin();
     };
 }
@@ -103,12 +109,12 @@ void ResetDialog::on_getCodeBtn_clicked()
         return;
     }
 
-    QString email = ui->emailLineEdit->text().trimmed();
-    QRegularExpression emailRegex(R"(^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$)");
+    const QString email = ui->emailLineEdit->text().trimmed();
+    const QRegularExpression emailRegex(R"(^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$)");
     if (!emailRegex.match(email).hasMatch()) {
         QMessageBox::warning(this,
-                             QString::fromUtf8(u8"\u9519\u8bef"),
-                             QString::fromUtf8(u8"\u90ae\u7bb1\u683c\u5f0f\u4e0d\u6b63\u786e"));
+                             QStringLiteral("错误"),
+                             QStringLiteral("邮箱格式不正确"));
         return;
     }
 
@@ -119,8 +125,7 @@ void ResetDialog::on_getCodeBtn_clicked()
         QUrl(gate_url_prefix + "/get_verifycode"),
         jsonObj,
         ReqId::ID_GET_VERIFY_CODE,
-        Modules::RESETMOD
-        );
+        Modules::RESETMOD);
 }
 
 void ResetDialog::startVerifyCountdown(int seconds)
@@ -138,9 +143,9 @@ void ResetDialog::startVerifyCountdown(int seconds)
 void ResetDialog::updateVerifyButtonText()
 {
     if (_verifyCountdownRemaining > 0) {
-        ui->getCodeBtn->setText(QString::fromUtf8(u8"%1\u79d2\u540e\u91cd\u53d1").arg(_verifyCountdownRemaining));
+        ui->getCodeBtn->setText(QStringLiteral("%1秒后重发").arg(_verifyCountdownRemaining));
     } else {
-        ui->getCodeBtn->setText(QString::fromUtf8(u8"\u83b7\u53d6\u9a8c\u8bc1\u7801"));
+        ui->getCodeBtn->setText(QStringLiteral("获取验证码"));
     }
 }
 
@@ -151,29 +156,29 @@ void ResetDialog::on_cancelBtn_clicked()
 
 void ResetDialog::on_resetBtn_clicked()
 {
-    QString username   = ui->userLineEdit->text().trimmed();
-    QString email      = ui->emailLineEdit->text().trimmed();
-    QString verifyCode = ui->codeLineEdit->text().trimmed();
-    QString password   = ui->passLineEdit->text();
+    const QString username = ui->userLineEdit->text().trimmed();
+    const QString email = ui->emailLineEdit->text().trimmed();
+    const QString verifyCode = ui->codeLineEdit->text().trimmed();
+    const QString password = ui->passLineEdit->text();
 
-    if (username.isEmpty() || email.isEmpty() ||
-        verifyCode.isEmpty() || password.isEmpty()) {
-        QMessageBox::warning(this, "重置失败", "请填写所有必填项！");
+    if (username.isEmpty() || email.isEmpty() || verifyCode.isEmpty() || password.isEmpty()) {
+        QMessageBox::warning(this,
+                             QStringLiteral("重置失败"),
+                             QStringLiteral("请填写所有必填项。"));
         return;
     }
 
     QJsonObject jsonObj;
-    jsonObj["user"]       = username;
-    jsonObj["email"]      = email;
+    jsonObj["user"] = username;
+    jsonObj["email"] = email;
     jsonObj["verifycode"] = verifyCode;
-    jsonObj["passwd"]     = password;
+    jsonObj["passwd"] = password;
 
     HttpMgr::getInstance().PostHttpReq(
         QUrl(gate_url_prefix + "/reset_pwd"),
         jsonObj,
         ReqId::ID_RESET_PWD,
-        Modules::RESETMOD
-        );
+        Modules::RESETMOD);
 }
 
 void ResetDialog::slot_reset_mod_http_finished(ReqId id, QString res, ErrorCodes err)
@@ -183,21 +188,22 @@ void ResetDialog::slot_reset_mod_http_finished(ReqId id, QString res, ErrorCodes
             startVerifyCountdown(0);
         }
         QMessageBox::warning(this,
-                             QString::fromUtf8(u8"\u9519\u8bef"),
-                             QString::fromUtf8(u8"\u7f51\u7edc\u8bf7\u6c42\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5"));
+                             QStringLiteral("错误"),
+                             QStringLiteral("网络请求失败，请重试"));
         return;
     }
 
-    QJsonDocument jsonDoc = QJsonDocument::fromJson(res.toUtf8());
+    const QJsonDocument jsonDoc = QJsonDocument::fromJson(res.toUtf8());
     if (jsonDoc.isNull()) {
-        qDebug() << "[ResetDialog.cpp] 函数 [slot_reset_mod_http_finished] JSON 解析失败: " << res;
+        qDebug() << "[ResetDialog.cpp] [slot_reset_mod_http_finished] JSON 解析失败:" << res;
         return;
     }
-
     if (!jsonDoc.isObject()) {
-        qDebug() << "[ResetDialog.cpp] 函数 [slot_reset_mod_http_finished] JSON 不是对象: " << res;
+        qDebug() << "[ResetDialog.cpp] [slot_reset_mod_http_finished] JSON 不是对象:" << res;
         return;
     }
 
-    _handlers[id](jsonDoc.object());
+    if (_handlers.contains(id)) {
+        _handlers[id](jsonDoc.object());
+    }
 }

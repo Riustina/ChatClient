@@ -250,7 +250,7 @@ public:
         , _fitToWindow(true)
     {
         setAttribute(Qt::WA_DeleteOnClose, true);
-        setWindowTitle(QString::fromUtf8(u8"\u56fe\u7247\u67e5\u770b"));
+        setWindowTitle(QStringLiteral("图片查看"));
         setModal(false);
         resize(1100, 800);
         setMinimumSize(720, 520);
@@ -603,7 +603,7 @@ int MessageCell::heightForMessage(const MessageItem &message, int availableWidth
 void MessageCell::updateAvatar(const MessageItem &message)
 {
     const QString displayName = message.senderName.trimmed().isEmpty()
-        ? (message.outgoing ? QString::fromUtf8(u8"\u6211") : QStringLiteral("?"))
+        ? (message.outgoing ? QStringLiteral("我") : QStringLiteral("?"))
         : message.senderName.trimmed();
     const QColor avatarColor = message.avatarColor.isValid()
         ? message.avatarColor

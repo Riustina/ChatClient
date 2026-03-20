@@ -1,4 +1,4 @@
-#include "localdb.h"
+﻿#include "localdb.h"
 
 #include <QDebug>
 #include <QDir>
@@ -262,7 +262,7 @@ bool LocalDb::setSyncValue(const QString &key, const QString &value)
 {
     QSqlDatabase db = QSqlDatabase::database(kConnectionName);
     if (!db.isOpen()) {
-        _lastError = QStringLiteral("鏈湴鏁版嵁搴撴湭鎵撳紑");
+        _lastError = QStringLiteral("本地数据库未打开");
         return false;
     }
 
@@ -274,7 +274,7 @@ bool LocalDb::setSyncValue(const QString &key, const QString &value)
     query.addBindValue(value);
     if (!query.exec()) {
         _lastError = query.lastError().text();
-        qWarning() << "[LocalDb] 淇濆瓨 sync_state 澶辫触:" << _lastError;
+        qWarning() << "[LocalDb] 保存 sync_state 失败:" << _lastError;
         return false;
     }
     return true;
@@ -284,7 +284,7 @@ QString LocalDb::syncValue(const QString &key, const QString &defaultValue)
 {
     QSqlDatabase db = QSqlDatabase::database(kConnectionName);
     if (!db.isOpen()) {
-        _lastError = QStringLiteral("鏈湴鏁版嵁搴撴湭鎵撳紑");
+        _lastError = QStringLiteral("本地数据库未打开");
         return defaultValue;
     }
 
@@ -293,7 +293,7 @@ QString LocalDb::syncValue(const QString &key, const QString &defaultValue)
     query.addBindValue(key);
     if (!query.exec()) {
         _lastError = query.lastError().text();
-        qWarning() << "[LocalDb] 鏌ヨ sync_state 澶辫触:" << _lastError;
+        qWarning() << "[LocalDb] 查询 sync_state 失败:" << _lastError;
         return defaultValue;
     }
 
@@ -483,7 +483,7 @@ QVector<ContactItem> LocalDb::loadFriendList()
     QVector<ContactItem> contacts;
     QSqlDatabase db = QSqlDatabase::database(kConnectionName);
     if (!db.isOpen()) {
-        _lastError = QStringLiteral("鏈湴鏁版嵁搴撴湭鎵撳紑");
+        _lastError = QStringLiteral("本地数据库未打开");
         return contacts;
     }
 
@@ -492,7 +492,7 @@ QVector<ContactItem> LocalDb::loadFriendList()
             "SELECT contact_id, name, last_message, last_time, unread_count, updated_at "
             "FROM contact_summary ORDER BY updated_at DESC, contact_id ASC"))) {
         _lastError = query.lastError().text();
-        qWarning() << "[LocalDb] 璇诲彇 contact_summary 澶辫触:" << _lastError;
+        qWarning() << "[LocalDb] 读取 contact_summary 失败:" << _lastError;
         return contacts;
     }
 
@@ -515,7 +515,7 @@ QVector<FriendRequestItem> LocalDb::loadFriendRequests(int currentUserId)
     QVector<FriendRequestItem> requests;
     QSqlDatabase db = QSqlDatabase::database(kConnectionName);
     if (!db.isOpen()) {
-        _lastError = QStringLiteral("鏈湴鏁版嵁搴撴湭鎵撳紑");
+        _lastError = QStringLiteral("本地数据库未打开");
         return requests;
     }
 
@@ -524,7 +524,7 @@ QVector<FriendRequestItem> LocalDb::loadFriendRequests(int currentUserId)
             "SELECT request_id, from_uid, to_uid, name, remark, status "
             "FROM friend_request ORDER BY updated_at DESC, request_id DESC"))) {
         _lastError = query.lastError().text();
-        qWarning() << "[LocalDb] 璇诲彇 friend_request 澶辫触:" << _lastError;
+        qWarning() << "[LocalDb] 读取 friend_request 失败:" << _lastError;
         return requests;
     }
 
@@ -556,7 +556,7 @@ QVector<MessageItem> LocalDb::loadConversationMessages(int contactId, int curren
     QVector<MessageItem> messages;
     QSqlDatabase db = QSqlDatabase::database(kConnectionName);
     if (!db.isOpen()) {
-        _lastError = QStringLiteral("鏈湴鏁版嵁搴撴湭鎵撳紑");
+        _lastError = QStringLiteral("本地数据库未打开");
         return messages;
     }
 
@@ -588,7 +588,7 @@ QVector<MessageItem> LocalDb::loadConversationMessages(int contactId, int curren
     }
     if (!query.exec()) {
         _lastError = query.lastError().text();
-        qWarning() << "[LocalDb] 璇诲彇 private_message 澶辫触:" << _lastError;
+        qWarning() << "[LocalDb] 读取 private_message 失败:" << _lastError;
         return messages;
     }
 

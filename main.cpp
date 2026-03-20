@@ -12,13 +12,13 @@ int main(int argc, char *argv[])
     QApplication a(argc, argv);
     a.setWindowIcon(QIcon(":/icons/app_logo.svg"));
 
-    QString fileName = "config.ini";
-    QString appPath = QCoreApplication::applicationDirPath();
-    QString configPath = QDir::toNativeSeparators(appPath + QDir::separator() + fileName);
+    const QString fileName = QStringLiteral("config.ini");
+    const QString appPath = QCoreApplication::applicationDirPath();
+    const QString configPath = QDir::toNativeSeparators(appPath + QDir::separator() + fileName);
     QSettings settings(configPath, QSettings::IniFormat);
-    QString gateHost = settings.value("GateServer/host").toString();
-    QString gatePort = settings.value("GateServer/port").toString();
-    gate_url_prefix = "http://" + gateHost + ":" + gatePort;
+    const QString gateHost = settings.value(QStringLiteral("GateServer/host")).toString();
+    const QString gatePort = settings.value(QStringLiteral("GateServer/port")).toString();
+    gate_url_prefix = QStringLiteral("http://") + gateHost + QStringLiteral(":") + gatePort;
 
     if (!LocalDb::instance().init()) {
         QMessageBox::critical(nullptr,

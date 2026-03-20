@@ -35,7 +35,7 @@ QPixmap buildAvatarPixmap(const QString &name, const QColor &color, const QSize 
 
 QString imagePreviewText()
 {
-    return QStringLiteral("[\u56fe\u7247]");
+    return QStringLiteral("[图片]");
 }
 
 QString normalizePreviewText(const QString &text)
@@ -56,7 +56,7 @@ QString normalizePreviewText(const QString &text)
         || lower.contains("\\uploads\\chat_images\\");
     const bool alreadyImagePreview = trimmed == QStringLiteral("[image]")
         || trimmed == QStringLiteral("[IMAGE]")
-        || trimmed.contains(QStringLiteral("\u56fe\u7247"));
+        || trimmed.contains(QStringLiteral("图片"));
 
     if (looksLikeImagePath || alreadyImagePreview) {
         return imagePreviewText();

@@ -19,7 +19,7 @@ LoginDialog::LoginDialog(QWidget *parent)
     , ui(new Ui::LoginDialog)
 {
     ui->setupUi(this);
-    setWindowTitle(QString::fromUtf8(u8"\u767b\u5f55"));
+    setWindowTitle(QStringLiteral("登录"));
     setAttribute(Qt::WA_StyledBackground, true);
     setStyleSheet(
         "QDialog { background:#ffffff; border-radius:24px; }"
@@ -34,16 +34,16 @@ LoginDialog::LoginDialog(QWidget *parent)
         "QPushButton#regButton, QPushButton#forgetBtn { background:#ffffff; color:#374151; border:1px solid #ddd6e8; }"
         "QPushButton#regButton:pressed, QPushButton#forgetBtn:pressed { background:#f7f5fb; }");
 
-    ui->label->setText(QString::fromUtf8(u8"\u6b22\u8fce\u56de\u6765"));
-    ui->userLabel->setText(QString::fromUtf8(u8"\u90ae\u7bb1"));
-    ui->pswdLabel->setText(QString::fromUtf8(u8"\u5bc6\u7801"));
-    ui->regButton->setText(QString::fromUtf8(u8"\u53bb\u6ce8\u518c"));
-    ui->loginBtn->setText(QString::fromUtf8(u8"\u767b\u5f55"));
-    ui->forgetBtn->setText(QString::fromUtf8(u8"\u5fd8\u8bb0\u5bc6\u7801"));
-    ui->emailLineEdit->setPlaceholderText(QString::fromUtf8(u8"\u8bf7\u8f93\u5165\u90ae\u7bb1\u5730\u5740"));
-    ui->pswdLineEdit->setPlaceholderText(QString::fromUtf8(u8"\u8bf7\u8f93\u5165\u5bc6\u7801"));
+    ui->label->setText(QStringLiteral("欢迎回来"));
+    ui->userLabel->setText(QStringLiteral("邮箱"));
+    ui->pswdLabel->setText(QStringLiteral("密码"));
+    ui->regButton->setText(QStringLiteral("去注册"));
+    ui->loginBtn->setText(QStringLiteral("登录"));
+    ui->forgetBtn->setText(QStringLiteral("忘记密码"));
+    ui->emailLineEdit->setPlaceholderText(QStringLiteral("请输入邮箱地址"));
+    ui->pswdLineEdit->setPlaceholderText(QStringLiteral("请输入密码"));
 
-    _rememberPasswordCheckBox = new QCheckBox(QString::fromUtf8(u8"\u8bb0\u4f4f\u5bc6\u7801"), this);
+    _rememberPasswordCheckBox = new QCheckBox(QStringLiteral("记住密码"), this);
     _rememberPasswordCheckBox->setObjectName(QStringLiteral("rememberPasswordCheckBox"));
     _rememberPasswordCheckBox->setStyleSheet(
         "QCheckBox { font: 10pt 'Microsoft YaHei UI'; color:#4b5563; spacing:6px; }"
@@ -86,8 +86,8 @@ void LoginDialog::on_loginBtn_clicked()
     if (email.isEmpty() || password.isEmpty()) {
         QMessageBox::warning(
             this,
-            QString::fromUtf8(u8"\u767b\u5f55\u5931\u8d25"),
-            QString::fromUtf8(u8"\u8bf7\u586b\u5199\u6240\u6709\u5fc5\u586b\u9879\u3002"));
+            QStringLiteral("登录失败"),
+            QStringLiteral("请填写所有必填项。"));
         return;
     }
 
@@ -109,8 +109,8 @@ void LoginDialog::slot_login_mod_http_finished(ReqId id, QString res, ErrorCodes
         }
         QMessageBox::warning(
             this,
-            QString::fromUtf8(u8"\u9519\u8bef"),
-            QString::fromUtf8(u8"\u7f51\u7edc\u8bf7\u6c42\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5"));
+            QStringLiteral("错误"),
+            QStringLiteral("网络请求失败，请重试"));
         return;
     }
 
@@ -146,10 +146,10 @@ void LoginDialog::initHttpHandlers()
             qDebug() << "[LoginDialog.cpp] [initHttpHandlers] login failed:" << jsonObj;
             QString errorMessage = jsonObj.value("message").toString();
             if (errorMessage.isEmpty()) {
-                errorMessage = QString::fromUtf8(u8"\u7528\u6237\u540d\u6216\u5bc6\u7801\u9519\u8bef\uff0c\u8bf7\u91cd\u8bd5");
+                errorMessage = QStringLiteral("用户名或密码错误，请重试");
             }
             QMessageBox::warning(this,
-                                 QString::fromUtf8(u8"\u767b\u5f55\u5931\u8d25"),
+                                 QStringLiteral("登录失败"),
                                  errorMessage);
             return;
         }
@@ -162,7 +162,7 @@ void LoginDialog::initHttpHandlers()
 
         _uid = si.Uid;
         _token = si.Token;
-        qDebug() << "[LoginDialog.cpp] [initHttpHandlers] login http ok, connect chat server:"
+        qDebug() << "[LoginDialog.cpp] [initHttpHandlers] 收到登录回包，连接至服务器:"
                  << si.Uid << si.Host << si.Port;
         emit sig_connect_tcp(si);
     };
@@ -183,10 +183,10 @@ void LoginDialog::slot_tcp_con_finish(bool bsuccess)
 
     _loginRequestInFlight = false;
     ui->loginBtn->setEnabled(true);
-    QMessageBox::warning(
+        QMessageBox::warning(
         this,
-        QString::fromUtf8(u8"\u9519\u8bef"),
-        QString::fromUtf8(u8"TCP \u957f\u94fe\u63a5\u8bf7\u6c42\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5"));
+        QStringLiteral("错误"),
+        QStringLiteral("TCP 长连接请求失败，请重试"));
 }
 
 void LoginDialog::slot_login_failed(int err)
@@ -195,8 +195,8 @@ void LoginDialog::slot_login_failed(int err)
     ui->loginBtn->setEnabled(true);
     QMessageBox::warning(
         this,
-        QString::fromUtf8(u8"\u767b\u5f55\u5931\u8d25"),
-        QString::fromUtf8(u8"\u767b\u5f55\u5931\u8d25\uff0c\u9519\u8bef\u7801: ") + QString::number(err));
+        QStringLiteral("登录失败"),
+        QStringLiteral("登录失败，错误码: ") + QString::number(err));
 }
 
 void LoginDialog::slot_chat_login_success()
