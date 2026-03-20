@@ -94,6 +94,7 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
     _conversations.clear();
     _friendRequests.clear();
     _searchResults.clear();
+    _usingRemoteSearchResults = false;
     _currentConversation = -1;
     _knownPendingIncomingRequestIds.clear();
     _hasUnreadFriendRequestNotification = false;
@@ -255,6 +256,7 @@ void ChatPage::onSearchTextChanged(const QString &text)
 {
     Q_UNUSED(text);
     _searchResults.clear();
+    _usingRemoteSearchResults = false;
     updateSearchPopup();
 }
 
@@ -269,6 +271,7 @@ void ChatPage::onPopupAddFriendClicked(const QString &text)
     }
 
     _searchResults.clear();
+    _usingRemoteSearchResults = true;
     QJsonObject obj;
     obj["keyword"] = keyword;
     obj["limit"] = 20;
@@ -544,7 +547,22 @@ QVector<ContactItem> ChatPage::filteredContacts(const QString &text) const
     if (text.isEmpty()) {
         return {};
     }
-    return _searchResults;
+
+    if (_usingRemoteSearchResults) {
+        return _searchResults;
+    }
+
+    QVector<ContactItem> results;
+    const QString keyword = text.trimmed();
+    for (const Conversation &conversation : _conversations) {
+        const ContactItem &contact = conversation.contact;
+        const bool matchesName = contact.name.contains(keyword, Qt::CaseInsensitive);
+        const bool matchesUid = QString::number(contact.id).contains(keyword, Qt::CaseInsensitive);
+        if (matchesName || matchesUid) {
+            results.push_back(contact);
+        }
+    }
+    return results;
 }
 
 int ChatPage::conversationIndexById(int contactId) const
@@ -858,6 +876,7 @@ bool ChatPage::resolveAddFriendTarget(const QString &text, ContactItem &contact)
 void ChatPage::onSearchUserRsp(const QJsonObject &payload)
 {
     _searchResults.clear();
+    _usingRemoteSearchResults = true;
     const QJsonArray users = payload.value("users").toArray();
     for (const QJsonValue &value : users) {
         const QJsonObject obj = value.toObject();
