@@ -3,6 +3,7 @@
 
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QByteArray>
 #include <QSet>
 #include <QVector>
 #include <QWidget>
@@ -87,6 +88,8 @@ private:
     MessageItem createOutgoingTextMessage(const QString &text);
     MessageItem createOutgoingImageMessage(const QImage &image);
     MessageItem createIncomingMockMessage();
+    QByteArray encodeImageForUpload(const QImage &image) const;
+    void populateImageMessage(MessageItem &item) const;
     QString formatMessagePreview(const MessageItem &message) const;
     QString formatMessageTime(const QDateTime &timestamp) const;
     QColor avatarColorForName(const QString &name) const;

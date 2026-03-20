@@ -12,6 +12,7 @@
 
 #include <QApplication>
 #include <QButtonGroup>
+#include <QBuffer>
 #include <QDateTime>
 #include <QEvent>
 #include <QFocusEvent>
@@ -176,7 +177,21 @@ void ChatPage::onSendClicked()
     }
 
     if (!pastedImage.isNull()) {
-        _conversations[_currentConversation].messages.push_back(createOutgoingImageMessage(pastedImage));
+        const QByteArray encodedImage = encodeImageForUpload(pastedImage);
+        if (encodedImage.isEmpty()) {
+            QMessageBox::warning(this,
+                                 QStringLiteral("发送失败"),
+                                 QStringLiteral("图片过大或编码失败，请尝试更小的图片。"));
+            return;
+        }
+
+        QJsonObject imageObj;
+        imageObj["to_uid"] = _conversations[_currentConversation].contact.id;
+        imageObj["content_type"] = "image";
+        imageObj["content"] = QString::fromLatin1(encodedImage);
+        emit TcpMgr::getInstance().sig_send_data(
+            ID_SEND_PRIVATE_MESSAGE_REQ,
+            QString::fromUtf8(QJsonDocument(imageObj).toJson(QJsonDocument::Compact)));
     }
     if (!text.isEmpty()) {
         QJsonObject obj;
@@ -188,12 +203,6 @@ void ChatPage::onSendClicked()
 
     _chatInputEdit->clear();
     _chatInputEdit->setPlaceholderText(QStringLiteral("输入消息，Enter 发送，Shift+Enter 换行。"));
-    if (!pastedImage.isNull()) {
-        _currentConversation = moveConversationToFront(_currentConversation);
-        refreshContactSummaries();
-        syncContactList();
-        bindConversation(_currentConversation);
-    }
 }
 
 void ChatPage::onMockReceiveClicked()
@@ -584,6 +593,51 @@ MessageItem ChatPage::createOutgoingImageMessage(const QImage &image)
     return message;
 }
 
+QByteArray ChatPage::encodeImageForUpload(const QImage &image) const
+{
+    if (image.isNull()) {
+        return {};
+    }
+
+    constexpr int kMaxEncodedBytes = 28 * 1024;
+    int quality = 85;
+    QSize targetSize = image.size();
+
+    while (quality >= 45) {
+        const QImage candidate = image.scaled(targetSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        QByteArray jpegBytes;
+        QBuffer buffer(&jpegBytes);
+        buffer.open(QIODevice::WriteOnly);
+        if (!candidate.save(&buffer, "JPG", quality)) {
+            return {};
+        }
+
+        const QByteArray encoded = jpegBytes.toBase64();
+        if (encoded.size() <= kMaxEncodedBytes) {
+            return encoded;
+        }
+
+        quality -= 10;
+        targetSize = targetSize.scaled(qMax(320, targetSize.width() * 4 / 5),
+                                       qMax(320, targetSize.height() * 4 / 5),
+                                       Qt::KeepAspectRatio);
+    }
+
+    return {};
+}
+
+void ChatPage::populateImageMessage(MessageItem &item) const
+{
+    if (item.type != ChatMessageType::Image || !item.image.isNull() || item.text.isEmpty()) {
+        return;
+    }
+
+    const QImage image(item.text);
+    if (!image.isNull()) {
+        item.image = image;
+    }
+}
+
 MessageItem ChatPage::createIncomingMockMessage()
 {
     static const QStringList texts = {
@@ -966,6 +1020,9 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
     if (!LocalDb::instance().saveFriendRequests(_friendRequests, _currentUserId)) {
         qWarning() << "[ChatPage] 保存好友申请到本地数据库失败:" << LocalDb::instance().lastError();
     }
+    if (!cursor.isEmpty()) {
+        LocalDb::instance().setSyncValue(QStringLiteral("friend_request_cursor"), cursor);
+    }
     updateFriendRequestBadge();
     emit friendRequestNotificationChanged(_hasUnreadFriendRequestNotification);
     refreshFriendRequestList();
@@ -1066,6 +1123,7 @@ MessageItem ChatPage::messageFromJson(const QJsonObject &obj) const
     if (!item.timestamp.isValid()) {
         item.timestamp = QDateTime::currentDateTime();
     }
+    populateImageMessage(item);
     return item;
 }
 
@@ -1305,6 +1363,7 @@ void ChatPage::hydrateConversationMessages(Conversation &conversation)
             }
             message.avatarColor = incomingColor;
         }
+        populateImageMessage(message);
     }
 }
 

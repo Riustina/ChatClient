@@ -567,13 +567,16 @@ QVector<MessageItem> LocalDb::loadConversationMessages(int contactId, int curren
         return messages;
     }
 
-    while (query.next()) {
-        MessageItem item;
-        item.id = query.value(0).toInt();
-        item.outgoing = query.value(1).toInt() == currentUserId;
-        item.type = query.value(3).toString() == QStringLiteral("image") ? ChatMessageType::Image : ChatMessageType::Text;
-        item.text = query.value(4).toString();
-        item.timestamp = QDateTime::fromString(query.value(5).toString(), Qt::ISODate);
+      while (query.next()) {
+          MessageItem item;
+          item.id = query.value(0).toInt();
+          item.outgoing = query.value(1).toInt() == currentUserId;
+          item.type = query.value(3).toString() == QStringLiteral("image") ? ChatMessageType::Image : ChatMessageType::Text;
+          item.text = query.value(4).toString();
+          if (item.type == ChatMessageType::Image && !item.text.isEmpty()) {
+              item.image = QImage(item.text);
+          }
+          item.timestamp = QDateTime::fromString(query.value(5).toString(), Qt::ISODate);
         if (!item.timestamp.isValid()) {
             item.timestamp = QDateTime::fromString(query.value(5).toString(), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
         }
