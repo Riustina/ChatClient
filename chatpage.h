@@ -102,6 +102,7 @@ private:
     void restoreCurrentConversation(int contactId);
     void hydrateConversationMessages(Conversation &conversation);
     void ensureConversationMessagesLoaded(int index);
+    void requestFriendList();
     void requestFriendRequests();
     void requestPrivateMessages(int contactId, int limit = 50, qint64 afterMsgId = -1);
     void requestMarkConversationRead(int contactId);

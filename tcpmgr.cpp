@@ -201,6 +201,14 @@ void TcpMgr::initHandlers()
         });
     };
 
+    _handlers[ID_GET_FRIEND_LIST_RSP] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
+        Q_UNUSED(len)
+        jsonForwarder(id, data, [this](const QJsonObject &obj) {
+            emit sig_friend_list_rsp(obj);
+            emit sig_friend_list_push(obj);
+        });
+    };
+
     _handlers[ID_GET_PRIVATE_MESSAGES_RSP] = [this, jsonForwarder](ReqId id, int len, QByteArray data) {
         Q_UNUSED(len)
         jsonForwarder(id, data, [this](const QJsonObject &obj) {

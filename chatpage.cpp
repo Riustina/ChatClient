@@ -123,6 +123,8 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
     updateChatBadge();
     emit friendRequestNotificationChanged(false);
     emit chatMessageNotificationChanged(false);
+    requestFriendList();
+    requestFriendRequests();
 }
 
 bool ChatPage::eventFilter(QObject *watched, QEvent *event)
@@ -801,6 +803,20 @@ void ChatPage::applyFriendList(const QJsonArray &friends)
     }
 }
 
+void ChatPage::requestFriendList()
+{
+    if (_currentUserId <= 0) {
+        return;
+    }
+
+    QJsonObject obj;
+    const QString cursor = LocalDb::instance().syncValue(QStringLiteral("friend_list_cursor"));
+    if (!cursor.isEmpty()) {
+        obj["updated_after"] = cursor;
+    }
+    emit TcpMgr::getInstance().sig_send_data(ID_GET_FRIEND_LIST_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+}
+
 void ChatPage::requestFriendRequests()
 {
     if (_currentUserId <= 0) {
@@ -808,6 +824,10 @@ void ChatPage::requestFriendRequests()
     }
 
     QJsonObject obj;
+    const QString cursor = LocalDb::instance().syncValue(QStringLiteral("friend_request_cursor"));
+    if (!cursor.isEmpty()) {
+        obj["updated_after"] = cursor;
+    }
     emit TcpMgr::getInstance().sig_send_data(ID_GET_FRIEND_REQUESTS_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
 }
 
@@ -878,10 +898,16 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
         return;
     }
 
+    const bool incremental = payload.value("incremental").toBool(false);
+    const QString cursor = payload.value("cursor").toString();
     qDebug() << "[ChatPage] onFriendRequestsRsp 收到服务端好友申请列表:"
-             << payload.value("requests").toArray().size() << "条";
+             << payload.value("requests").toArray().size() << "条, incremental:" << incremental;
 
-    _friendRequests.clear();
+    QVector<FriendRequestItem> mergedRequests = incremental ? _friendRequests : QVector<FriendRequestItem>{};
+    QHash<int, int> requestIndexById;
+    for (int i = 0; i < mergedRequests.size(); ++i) {
+        requestIndexById.insert(mergedRequests[i].id, i);
+    }
     QSet<int> currentPendingIncomingIds;
     const QJsonArray requests = payload.value("requests").toArray();
     for (const QJsonValue &value : requests) {
@@ -908,9 +934,23 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
             currentPendingIncomingIds.insert(item.id);
         }
         item.createdAt = QDateTime::currentDateTime();
-        _friendRequests.push_back(item);
+        if (requestIndexById.contains(item.id)) {
+            mergedRequests[requestIndexById.value(item.id)] = item;
+        } else {
+            requestIndexById.insert(item.id, mergedRequests.size());
+            mergedRequests.push_back(item);
+        }
         _friendRequestIdSeed = qMax(_friendRequestIdSeed, item.id);
     }
+
+    if (incremental) {
+        for (const FriendRequestItem &item : std::as_const(mergedRequests)) {
+            if (item.direction == FriendRequestDirection::Incoming && item.state == FriendRequestState::Pending) {
+                currentPendingIncomingIds.insert(item.id);
+            }
+        }
+    }
+    _friendRequests = mergedRequests;
 
     if (ui->rightStackedWidget->currentIndex() != 1) {
         for (int requestId : currentPendingIncomingIds) {
@@ -972,10 +1012,38 @@ void ChatPage::onFriendListPush(const QJsonObject &payload)
         return;
     }
 
+    const bool incremental = payload.value("incremental").toBool(false);
+    const QString cursor = payload.value("cursor").toString();
     qDebug() << "[ChatPage] onFriendListPush 收到服务端好友列表:"
-             << payload.value("friends").toArray().size() << "条";
+             << payload.value("friends").toArray().size() << "条, incremental:" << incremental;
 
-    applyFriendList(payload.value("friends").toArray());
+    QJsonArray friends = payload.value("friends").toArray();
+    if (incremental) {
+        QMap<int, QJsonObject> merged;
+        for (const Conversation &conversation : std::as_const(_conversations)) {
+            QJsonObject obj;
+            obj["uid"] = conversation.contact.id;
+            obj["name"] = conversation.contact.name;
+            obj["last_message"] = conversation.contact.lastMessage;
+            obj["last_time"] = conversation.contact.timeText;
+            obj["unread_count"] = conversation.contact.unreadCount;
+            merged.insert(conversation.contact.id, obj);
+        }
+        for (const QJsonValue &value : friends) {
+            const QJsonObject obj = value.toObject();
+            merged.insert(obj.value("uid").toInt(), obj);
+        }
+
+        friends = QJsonArray();
+        for (auto it = merged.cbegin(); it != merged.cend(); ++it) {
+            friends.push_back(it.value());
+        }
+    }
+
+    applyFriendList(friends);
+    if (!cursor.isEmpty()) {
+        LocalDb::instance().setSyncValue(QStringLiteral("friend_list_cursor"), cursor);
+    }
 }
 
 MessageItem ChatPage::messageFromJson(const QJsonObject &obj) const
