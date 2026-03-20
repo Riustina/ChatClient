@@ -5,6 +5,9 @@
 #include "usermgr.h"
 #include <QEvent>
 #include <QMessageBox>
+#include <QHBoxLayout>
+#include <QVBoxLayout>
+#include <QSizePolicy>
 
 #ifdef Q_OS_WIN
 #include <qt_windows.h>
@@ -18,36 +21,86 @@ MainWindow::MainWindow(QWidget *parent)
     ui->statusbar->setSizeGripEnabled(false);
     ui->statusbar->hide();
 
-    _stackedWidget = new QStackedWidget(this);
-    setCentralWidget(_stackedWidget);
+    _contentStack = new QStackedWidget(this);
+    setCentralWidget(_contentStack);
 
     _chatPage = new ChatPage(this);
-    _loginDialog = new LoginDialog(this);
-    _registerDialog = new RegisterDialog(this);
-    _resetDialog = new ResetDialog(this);
-    _stackedWidget->addWidget(_chatPage);
-    _stackedWidget->addWidget(_loginDialog);
-    _stackedWidget->addWidget(_registerDialog);
-    _stackedWidget->addWidget(_resetDialog);
-    _stackedWidget->setCurrentWidget(_loginDialog);
+    _loginDialog = new LoginDialog();
+    _registerDialog = new RegisterDialog();
+    _resetDialog = new ResetDialog();
 
-    resize(1110, 730);
-    setMinimumSize(880, 590);
+    auto createAuthPage = [](QWidget *dialog) {
+        auto *page = new QWidget();
+        page->setAttribute(Qt::WA_StyledBackground, true);
+        page->setStyleSheet("background:transparent;");
+        auto *pageLayout = new QVBoxLayout(page);
+        pageLayout->setContentsMargins(0, 0, 0, 0);
+        pageLayout->addStretch();
+        auto *row = new QHBoxLayout();
+        row->setContentsMargins(0, 0, 0, 0);
+        row->addStretch();
+        row->addWidget(dialog);
+        row->addStretch();
+        pageLayout->addLayout(row);
+        pageLayout->addStretch();
+        return page;
+    };
+
+    _authContainer = new QWidget(this);
+    _authContainer->setStyleSheet("background:#F7F5FB;");
+    auto *authOuter = new QVBoxLayout(_authContainer);
+    authOuter->setContentsMargins(20, 10, 20, 10);
+    authOuter->addStretch();
+    auto *authRow = new QHBoxLayout();
+    authRow->addStretch();
+    _authStack = new QStackedWidget(_authContainer);
+    _authStack->setFixedSize(520, 590);
+    _authStack->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
+    _authStack->setStyleSheet("background:transparent;");
+    authRow->addWidget(_authStack);
+    authRow->addStretch();
+    authOuter->addLayout(authRow);
+    authOuter->addStretch();
+
+    _loginDialog->setParent(_authStack);
+    _registerDialog->setParent(_authStack);
+    _resetDialog->setParent(_authStack);
+    _loginDialog->setFixedSize(460, 520);
+    _registerDialog->setFixedSize(460, 520);
+    _resetDialog->setFixedSize(460, 520);
+
+    auto *loginPage = createAuthPage(_loginDialog);
+    auto *registerPage = createAuthPage(_registerDialog);
+    auto *resetPage = createAuthPage(_resetDialog);
+    _authStack->addWidget(loginPage);
+    _authStack->addWidget(registerPage);
+    _authStack->addWidget(resetPage);
+    _authStack->setCurrentWidget(loginPage);
+
+    _contentStack->addWidget(_authContainer);
+    _contentStack->addWidget(_chatPage);
+    _contentStack->setCurrentWidget(_authContainer);
+
+    setFixedSize(560, 640);
     setWindowTitle("Chat Client");
 
     // 绑定信号和槽
     connect(_loginDialog, &LoginDialog::switchRegister, this, [this]() {
-        _stackedWidget->setCurrentWidget(_registerDialog);
+        _authStack->setCurrentIndex(1);
+        setFixedSize(560, 640);
     });
     connect(_registerDialog, &RegisterDialog::switchToLogin, this, [this]() {
-        _stackedWidget->setCurrentWidget(_loginDialog);
+        _authStack->setCurrentIndex(0);
+        setFixedSize(560, 640);
     });
 
     connect(_loginDialog, &LoginDialog::switchReset, this, [this]() {
-        _stackedWidget->setCurrentWidget(_resetDialog);
+        _authStack->setCurrentIndex(2);
+        setFixedSize(560, 640);
     });
     connect(_resetDialog, &ResetDialog::switchToLogin, this, [this]() {
-        _stackedWidget->setCurrentWidget(_loginDialog);
+        _authStack->setCurrentIndex(0);
+        setFixedSize(560, 640);
     });
 
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_switch_chatdlg, this, [this]() {
@@ -60,17 +113,22 @@ MainWindow::MainWindow(QWidget *parent)
         _chatPage->setCurrentUser(UserMgr::getInstance().GetUid(),
                                   UserMgr::getInstance().GetName());
         setWindowTitle(UserMgr::getInstance().GetName());
-        _stackedWidget->setCurrentWidget(_chatPage);
+        setMinimumSize(880, 590);
+        setMaximumSize(QWIDGETSIZE_MAX, QWIDGETSIZE_MAX);
+        resize(1110, 730);
+        _contentStack->setCurrentWidget(_chatPage);
     });
 
-    // connect(&TcpMgr::getInstance(), &TcpMgr::sig_server_closed, this, [this]() {
-    //     QMessageBox::warning(this, "连接断开", "聊天服务器已关闭或连接已断开，请重新登录。", QMessageBox::Ok);
-    //     _friendRequestFlashActive = false;
-    //     _chatMessageFlashActive = false;
-    //     updateTaskbarFlashState();
-    //     setWindowTitle("Chat Client");
-    //     _stackedWidget->setCurrentWidget(_loginDialog);
-    // });
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_server_closed, this, [this]() {
+        QMessageBox::warning(this, "连接断开", "聊天服务器已关闭或连接已断开，请重新登录。", QMessageBox::Ok);
+        _friendRequestFlashActive = false;
+        _chatMessageFlashActive = false;
+        updateTaskbarFlashState();
+        setWindowTitle("Chat Client");
+        _authStack->setCurrentIndex(0);
+        setFixedSize(560, 640);
+        _contentStack->setCurrentWidget(_authContainer);
+    });
 
     connect(_chatPage, &ChatPage::friendRequestNotificationChanged, this, [this](bool hasUnread) {
         _friendRequestFlashActive = hasUnread;

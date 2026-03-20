@@ -149,6 +149,10 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
 
 bool ChatPage::eventFilter(QObject *watched, QEvent *event)
 {
+    if (_addFriendDialogActive) {
+        return QWidget::eventFilter(watched, event);
+    }
+
     if (watched == ui->searchLineEdit) {
         if (event->type() == QEvent::FocusIn) {
             showSearchPopup();
@@ -290,6 +294,10 @@ void ChatPage::onPopupAddFriendClicked(const QString &text)
 
 void ChatPage::onPopupContactClicked(int contactId)
 {
+    if (_addFriendDialogActive) {
+        return;
+    }
+
     const int index = conversationIndexById(contactId);
     if (index >= 0) {
         bindConversation(index);
@@ -333,14 +341,18 @@ void ChatPage::onPopupContactClicked(int contactId)
     }
 
     _pendingAddFriendTarget = targetContact;
+    _addFriendDialogActive = true;
     AddFriendDialog dialog(targetContact.name, this);
-    if (dialog.exec() == QDialog::Accepted) {
+    const int result = dialog.exec();
+    _addFriendDialogActive = false;
+    if (result == QDialog::Accepted) {
         _pendingAddFriendRemark = dialog.remark();
         QJsonObject obj;
         obj["to_uid"] = targetContact.id;
         obj["remark"] = _pendingAddFriendRemark;
         emit TcpMgr::getInstance().sig_send_data(ID_ADD_FRIEND_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
     }
+    ui->searchLineEdit->clearFocus();
     hideSearchPopup();
 }
 
@@ -522,6 +534,9 @@ void ChatPage::applyEmptyConversationState()
 
 void ChatPage::showSearchPopup()
 {
+    if (_addFriendDialogActive) {
+        return;
+    }
     updateSearchPopup();
     const QPoint belowSearch = mapFromGlobal(ui->searchLineEdit->mapToGlobal(QPoint(0, ui->searchLineEdit->height() + 6)));
     const int width = ui->searchLineEdit->width();
@@ -538,6 +553,9 @@ void ChatPage::hideSearchPopup()
 
 void ChatPage::updateSearchPopup()
 {
+    if (_addFriendDialogActive) {
+        return;
+    }
     const QString text = ui->searchLineEdit->text().trimmed();
     _searchPopup->setSearchText(text);
     const int currentContactId = (_conversations.isEmpty() || _currentConversation < 0 || _currentConversation >= _conversations.size())
@@ -579,12 +597,17 @@ void ChatPage::refreshContactSummaries()
 
 void ChatPage::syncContactList()
 {
+    const int currentContactId = (_currentConversation >= 0 && _currentConversation < _conversations.size())
+        ? _conversations[_currentConversation].contact.id
+        : -1;
+    sortConversationsByLatest();
+    restoreCurrentConversation(currentContactId);
+
     QVector<ContactItem> contacts;
     contacts.reserve(_conversations.size());
     for (const Conversation &conversation : _conversations) {
         contacts.push_back(conversation.contact);
     }
-    const int currentContactId = _conversations.isEmpty() ? -1 : _conversations[_currentConversation].contact.id;
     _contactListWidget->setContacts(contacts, currentContactId);
 }
 
@@ -969,8 +992,10 @@ void ChatPage::onSearchUserRsp(const QJsonObject &payload)
         contact.avatarColor = avatarColorForName(contact.name.isEmpty() ? QString::number(contact.id) : contact.name);
         _searchResults.push_back(contact);
     }
-    updateSearchPopup();
-    showSearchPopup();
+    if (!_addFriendDialogActive) {
+        updateSearchPopup();
+        showSearchPopup();
+    }
 }
 
 void ChatPage::onAddFriendRsp(const QJsonObject &payload)

@@ -166,6 +166,7 @@ private:
     QNetworkAccessManager *_imageDownloadManager = nullptr;
     bool _hasUnreadFriendRequestNotification = false;
     bool _hasUnreadChatNotification = false;
+    bool _addFriendDialogActive = false;
     QSet<QString> _downloadingImageResources;
     int _currentUserId = 0;
     QString _currentUserName;

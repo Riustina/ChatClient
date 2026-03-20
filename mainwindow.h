@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <QWidget>
 #include "chatpage.h"
 #include "logindialog.h"
 #include "qstackedwidget.h"
@@ -30,7 +31,9 @@ private:
     void stopTaskbarFlash();
 
     Ui::MainWindow *ui;
-    QStackedWidget *_stackedWidget;
+    QStackedWidget *_contentStack;
+    QWidget *_authContainer;
+    QStackedWidget *_authStack;
     ChatPage *_chatPage;
     LoginDialog *_loginDialog;
     RegisterDialog *_registerDialog;

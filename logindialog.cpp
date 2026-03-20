@@ -12,6 +12,28 @@ LoginDialog::LoginDialog(QWidget *parent)
     , ui(new Ui::LoginDialog)
 {
     ui->setupUi(this);
+    setWindowTitle(QString::fromUtf8(u8"登录"));
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet(
+        "QDialog { background:#ffffff; border-radius:24px; }"
+        "QLabel#label { font: 700 24px 'Microsoft YaHei UI'; color:#111827; }"
+        "QLabel#subtitleLabel, QLabel#registerHintLabel { font: 10pt 'Microsoft YaHei UI'; color:#6b7280; background:transparent; }"
+        "QLabel#userLabel, QLabel#pswdLabel { font: 10pt 'Microsoft YaHei UI'; color:#374151; min-width:56px; background:transparent; }"
+        "QLineEdit { background:#ffffff; border:1px solid #ddd6e8; border-radius:14px; min-height:40px; padding:0 12px; font: 10pt 'Microsoft YaHei UI'; color:#111827; }"
+        "QLineEdit:focus { border:1px solid #b7b2c7; background:#ffffff; }"
+        "QPushButton { min-height:40px; border:none; border-radius:14px; font: 10pt 'Microsoft YaHei UI'; padding:0 18px; }"
+        "QPushButton#loginBtn { background:#111827; color:white; }"
+        "QPushButton#loginBtn:pressed { background:#1f2937; }"
+        "QPushButton#regButton, QPushButton#forgetBtn { background:#ffffff; color:#374151; border:1px solid #ddd6e8; }"
+        "QPushButton#regButton:pressed, QPushButton#forgetBtn:pressed { background:#f7f5fb; }");
+    ui->label->setText(QString::fromUtf8(u8"欢迎回来"));
+    ui->userLabel->setText(QString::fromUtf8(u8"邮箱"));
+    ui->pswdLabel->setText(QString::fromUtf8(u8"密码"));
+    ui->regButton->setText(QString::fromUtf8(u8"去注册"));
+    ui->loginBtn->setText(QString::fromUtf8(u8"登录"));
+    ui->forgetBtn->setText(QString::fromUtf8(u8"忘记密码"));
+    ui->emailLineEdit->setPlaceholderText(QString::fromUtf8(u8"请输入邮箱地址"));
+    ui->pswdLineEdit->setPlaceholderText(QString::fromUtf8(u8"请输入密码"));
 
     // 绑定信号与槽
     connect(ui->regButton, &QPushButton::clicked, this, [this]() {

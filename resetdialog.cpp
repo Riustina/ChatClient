@@ -3,6 +3,7 @@
 #include <QRegularExpression>
 #include <QMessageBox>
 #include <QJsonObject>
+#include <QLineEdit>
 #include "httpmgr.h"
 
 ResetDialog::ResetDialog(QWidget *parent)
@@ -10,6 +11,33 @@ ResetDialog::ResetDialog(QWidget *parent)
     , ui(new Ui::ResetDialog)
 {
     ui->setupUi(this);
+    setWindowTitle(QString::fromUtf8(u8"重置密码"));
+    setAttribute(Qt::WA_StyledBackground, true);
+    setStyleSheet(
+        "QDialog { background:#ffffff; border-radius:24px; }"
+        "QLabel#hintLabel { font: 700 24px 'Microsoft YaHei UI'; color:#111827; }"
+        "QLabel#subtitleLabel { font: 10pt 'Microsoft YaHei UI'; color:#6b7280; background:transparent; }"
+        "QLabel#userLabel, QLabel#emailLabel, QLabel#codeLabel, QLabel#passLabel { font: 10pt 'Microsoft YaHei UI'; color:#374151; min-width:72px; background:transparent; }"
+        "QLineEdit { background:#ffffff; border:1px solid #ddd6e8; border-radius:14px; min-height:40px; padding:0 12px; font: 10pt 'Microsoft YaHei UI'; color:#111827; }"
+        "QLineEdit:focus { border:1px solid #b7b2c7; background:#ffffff; }"
+        "QPushButton { min-height:40px; border:none; border-radius:14px; font: 10pt 'Microsoft YaHei UI'; padding:0 18px; }"
+        "QPushButton#resetBtn { background:#111827; color:white; }"
+        "QPushButton#resetBtn:pressed { background:#1f2937; }"
+        "QPushButton#getCodeBtn, QPushButton#cancelBtn { background:#ffffff; color:#374151; border:1px solid #ddd6e8; }"
+        "QPushButton#getCodeBtn:pressed, QPushButton#cancelBtn:pressed { background:#f7f5fb; }");
+    ui->hintLabel->setText(QString::fromUtf8(u8"找回密码"));
+    ui->userLabel->setText(QString::fromUtf8(u8"用户名"));
+    ui->emailLabel->setText(QString::fromUtf8(u8"邮箱"));
+    ui->codeLabel->setText(QString::fromUtf8(u8"验证码"));
+    ui->passLabel->setText(QString::fromUtf8(u8"新密码"));
+    ui->getCodeBtn->setText(QString::fromUtf8(u8"获取验证码"));
+    ui->cancelBtn->setText(QString::fromUtf8(u8"返回登录"));
+    ui->resetBtn->setText(QString::fromUtf8(u8"重置密码"));
+    ui->userLineEdit->setPlaceholderText(QString::fromUtf8(u8"请输入用户名"));
+    ui->emailLineEdit->setPlaceholderText(QString::fromUtf8(u8"请输入邮箱地址"));
+    ui->codeLineEdit->setPlaceholderText(QString::fromUtf8(u8"请输入验证码"));
+    ui->passLineEdit->setPlaceholderText(QString::fromUtf8(u8"请输入新的登录密码"));
+    ui->passLineEdit->setEchoMode(QLineEdit::Password);
 
     initHttpHandlers();
 
