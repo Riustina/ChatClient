@@ -387,12 +387,15 @@ bool LocalDb::upsertContactSummaryItem(const ContactItem &contact)
     query.prepare(QStringLiteral(
         "INSERT OR REPLACE INTO contact_summary("
         "contact_id, name, last_message, last_time, unread_count, updated_at"
-        ") VALUES(?, ?, ?, ?, ?, CURRENT_TIMESTAMP)"));
+        ") VALUES(?, ?, ?, ?, ?, ?)"));
     query.addBindValue(contact.id);
     query.addBindValue(contact.name);
     query.addBindValue(contact.lastMessage);
     query.addBindValue(contact.timeText);
     query.addBindValue(contact.unreadCount);
+    query.addBindValue(contact.updatedAt.isValid()
+                           ? contact.updatedAt.toString(Qt::ISODate)
+                           : QDateTime::currentDateTime().toString(Qt::ISODate));
     if (!query.exec()) {
         _lastError = query.lastError().text();
         qWarning() << "[LocalDb] 保存 contact_summary 失败:" << _lastError;
@@ -486,7 +489,7 @@ QVector<ContactItem> LocalDb::loadFriendList()
 
     QSqlQuery query(db);
     if (!query.exec(QStringLiteral(
-            "SELECT contact_id, name, last_message, last_time, unread_count "
+            "SELECT contact_id, name, last_message, last_time, unread_count, updated_at "
             "FROM contact_summary ORDER BY updated_at DESC, contact_id ASC"))) {
         _lastError = query.lastError().text();
         qWarning() << "[LocalDb] 璇诲彇 contact_summary 澶辫触:" << _lastError;
@@ -500,6 +503,7 @@ QVector<ContactItem> LocalDb::loadFriendList()
         contact.lastMessage = query.value(2).toString();
         contact.timeText = query.value(3).toString();
         contact.unreadCount = query.value(4).toInt();
+        contact.updatedAt = QDateTime::fromString(query.value(5).toString(), Qt::ISODate);
         contacts.push_back(contact);
     }
 

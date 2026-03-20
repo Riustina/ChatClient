@@ -50,7 +50,6 @@ protected:
 private slots:
     void onContactActivated(int index);
     void onSendClicked();
-    void onMockReceiveClicked();
     void onImagePasted();
     void onSearchTextChanged(const QString &text);
     void onPopupAddFriendClicked(const QString &text);
@@ -170,7 +169,7 @@ private:
     QSet<QString> _downloadingImageResources;
     int _currentUserId = 0;
     QString _currentUserName;
-    int _currentConversation = 0;
+    int _currentConversation = -1;
     int _messageIdSeed = 1000;
     int _friendRequestIdSeed = 2000;
 };

@@ -1,0 +1,18 @@
+<svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="32" y1="24" x2="224" y2="232" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111827"/>
+      <stop offset="1" stop-color="#475569"/>
+    </linearGradient>
+    <linearGradient id="bubble" x1="72" y1="70" x2="188" y2="182" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#CBD5E1"/>
+    </linearGradient>
+  </defs>
+  <rect x="20" y="20" width="216" height="216" rx="56" fill="url(#bg)"/>
+  <rect x="56" y="60" width="144" height="108" rx="30" fill="url(#bubble)"/>
+  <path d="M104 162L88 196L132 170" fill="url(#bubble)"/>
+  <circle cx="96" cy="114" r="10" fill="#111827"/>
+  <circle cx="128" cy="114" r="10" fill="#111827"/>
+  <circle cx="160" cy="114" r="10" fill="#111827"/>
+</svg>

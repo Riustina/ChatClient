@@ -21,6 +21,7 @@ private:
     QMap<ReqId, std::function<void(const QJsonObject&)>> _handlers;
     int _uid;
     QString _token;
+    bool _loginRequestInFlight = false;
 
     void initHttpHandlers();
 

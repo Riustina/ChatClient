@@ -3,12 +3,14 @@
 
 #include <QApplication>
 #include <QDir>
+#include <QIcon>
 #include <QMessageBox>
 #include <QSettings>
 
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+    a.setWindowIcon(QIcon(":/icons/app_logo.svg"));
 
     QString fileName = "config.ini";
     QString appPath = QCoreApplication::applicationDirPath();

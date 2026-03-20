@@ -2,6 +2,7 @@
 #define REGISTERDIALOG_H
 
 #include <QDialog>
+#include <QTimer>
 #include "global.h"
 
 namespace Ui {
@@ -27,7 +28,12 @@ private slots:
 private:
     Ui::RegisterDialog *ui;
     void initHttpHandlers();
+    void startVerifyCountdown(int seconds = 60);
+    void updateVerifyButtonText();
     QMap<ReqId, std::function<void(const QJsonObject&)>> _handlers; // 请求ID到处理函数的映射
+
+    QTimer _verifyCountdownTimer;
+    int _verifyCountdownRemaining = 0;
 
 signals:
     void switchToLogin();

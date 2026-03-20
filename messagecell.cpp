@@ -18,6 +18,7 @@
 #include <QResizeEvent>
 #include <QScrollArea>
 #include <QScreen>
+#include <QScrollBar>
 #include <QTextBrowser>
 #include <QTextCursor>
 #include <QTextDocument>
@@ -54,6 +55,27 @@ QPixmap buildAvatarPixmap(const QString &name, const QColor &color, const QSize 
     painter.setFont(font);
     painter.drawText(QRectF(0, 0, size.width(), size.height()), Qt::AlignCenter, name.left(1).toUpper());
     return pixmap;
+}
+
+QColor fallbackAvatarColor(const QString &name)
+{
+    static const QList<QColor> colors = {
+        QColor("#4f46e5"),
+        QColor("#0f766e"),
+        QColor("#ea580c"),
+        QColor("#dc2626"),
+        QColor("#2563eb"),
+        QColor("#7c3aed")
+    };
+
+    int seed = 0;
+    for (const QChar ch : name) {
+        seed += ch.unicode();
+    }
+    if (seed < 0) {
+        seed = -seed;
+    }
+    return colors[seed % colors.size()];
 }
 
 QPixmap roundedPixmap(const QImage &image, const QSize &size)
@@ -293,6 +315,8 @@ public:
         _imageLabel->setSizePolicy(QSizePolicy::Fixed, QSizePolicy::Fixed);
         _imageLabel->setScaledContents(false);
         _scrollArea->setWidget(_imageLabel);
+        _imageLabel->installEventFilter(this);
+        _scrollArea->viewport()->installEventFilter(this);
 
         connect(fitButton, &QPushButton::clicked, this, [this]() {
             _fitToWindow = true;
@@ -370,6 +394,37 @@ protected:
         QDialog::wheelEvent(event);
     }
 
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (watched == _imageLabel || watched == _scrollArea->viewport()) {
+            if (event->type() == QEvent::MouseButtonPress) {
+                auto *mouseEvent = static_cast<QMouseEvent *>(event);
+                if (mouseEvent->button() == Qt::LeftButton) {
+                    _dragging = true;
+                    _lastDragPos = mouseEvent->globalPosition().toPoint();
+                    _imageLabel->setCursor(Qt::ClosedHandCursor);
+                    return true;
+                }
+            } else if (event->type() == QEvent::MouseMove && _dragging) {
+                auto *mouseEvent = static_cast<QMouseEvent *>(event);
+                const QPoint currentPos = mouseEvent->globalPosition().toPoint();
+                const QPoint delta = currentPos - _lastDragPos;
+                _lastDragPos = currentPos;
+                _scrollArea->horizontalScrollBar()->setValue(_scrollArea->horizontalScrollBar()->value() - delta.x());
+                _scrollArea->verticalScrollBar()->setValue(_scrollArea->verticalScrollBar()->value() - delta.y());
+                return true;
+            } else if (event->type() == QEvent::MouseButtonRelease && _dragging) {
+                auto *mouseEvent = static_cast<QMouseEvent *>(event);
+                if (mouseEvent->button() == Qt::LeftButton) {
+                    _dragging = false;
+                    _imageLabel->setCursor(Qt::OpenHandCursor);
+                    return true;
+                }
+            }
+        }
+        return QDialog::eventFilter(watched, event);
+    }
+
 private:
     void updateImageDisplay()
     {
@@ -402,6 +457,7 @@ private:
         pixmap.setDevicePixelRatio(dpr);
         _imageLabel->setPixmap(pixmap);
         _imageLabel->resize(targetSize);
+        _imageLabel->setCursor(_fitToWindow ? Qt::ArrowCursor : Qt::OpenHandCursor);
         _zoomLabel->setText(QStringLiteral("%1%").arg(qRound(_scaleFactor * 100.0)));
     }
 
@@ -411,6 +467,8 @@ private:
     QLabel *_zoomLabel;
     qreal _scaleFactor;
     bool _fitToWindow;
+    bool _dragging = false;
+    QPoint _lastDragPos;
 };
 
 } // namespace
@@ -544,8 +602,14 @@ int MessageCell::heightForMessage(const MessageItem &message, int availableWidth
 
 void MessageCell::updateAvatar(const MessageItem &message)
 {
+    const QString displayName = message.senderName.trimmed().isEmpty()
+        ? (message.outgoing ? QString::fromUtf8(u8"\u6211") : QStringLiteral("?"))
+        : message.senderName.trimmed();
+    const QColor avatarColor = message.avatarColor.isValid()
+        ? message.avatarColor
+        : fallbackAvatarColor(displayName);
     _avatarLabel->setPixmap(
-        buildAvatarPixmap(message.senderName, message.avatarColor, _avatarLabel->size()));
+        buildAvatarPixmap(displayName, avatarColor, _avatarLabel->size()));
 }
 
 void MessageCell::layoutOutgoing(int bubbleWidth, int contentHeight)

@@ -33,6 +33,7 @@ struct ContactItem {
     QString name;
     QString lastMessage;
     QString timeText;
+    QDateTime updatedAt;
     QColor avatarColor;
     int unreadCount = 0;
 };

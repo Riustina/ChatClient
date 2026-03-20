@@ -35,9 +35,11 @@ void ContactListWidget::setContacts(const QVector<ContactItem> &contacts, int cu
                 break;
             }
         }
-        _currentIndex = foundIndex >= 0 ? foundIndex : 0;
+        _currentIndex = foundIndex;
+    } else if (_contacts.isEmpty()) {
+        _currentIndex = -1;
     } else if (_currentIndex >= _contacts.size()) {
-        _currentIndex = 0;
+        _currentIndex = -1;
     }
     rebuildPool();
     updateContentHeight();

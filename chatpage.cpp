@@ -96,7 +96,7 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
     _conversations.clear();
     _friendRequests.clear();
     _searchResults.clear();
-    _currentConversation = 0;
+    _currentConversation = -1;
     _knownPendingIncomingRequestIds.clear();
     _hasUnreadFriendRequestNotification = false;
     _hasUnreadChatNotification = false;
@@ -126,12 +126,9 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
     }
 
     if (!_conversations.isEmpty()) {
-        _conversations[0].messages = LocalDb::instance().loadConversationMessages(_conversations[0].contact.id, _currentUserId, 10);
-        hydrateConversationMessages(_conversations[0]);
-        qDebug() << "[ChatPage] setCurrentUser 从本地数据库恢复默认会话消息:" << _conversations[0].messages.size()
-                 << "条, contactId:" << _conversations[0].contact.id;
+        sortConversationsByLatest();
         syncContactList();
-        bindConversation(0);
+        applyEmptyConversationState();
     } else {
         qDebug() << "[ChatPage] setCurrentUser 本地数据库没有可恢复的好友列表";
         syncContactList();
@@ -246,19 +243,7 @@ void ChatPage::onSendClicked()
 
     _chatInputEdit->clear();
     _chatInputEdit->setPlaceholderText(QStringLiteral("输入消息，Enter 发送，Shift+Enter 换行。"));
-}
-
-void ChatPage::onMockReceiveClicked()
-{
-    if (_conversations.isEmpty() || _currentConversation < 0 || _currentConversation >= _conversations.size()) {
-        return;
-    }
-
-    _conversations[_currentConversation].messages.push_back(createIncomingMockMessage());
-    _currentConversation = moveConversationToFront(_currentConversation);
-    refreshContactSummaries();
-    syncContactList();
-    bindConversation(_currentConversation);
+    _chatInputEdit->setFocus();
 }
 
 void ChatPage::onImagePasted()
@@ -371,6 +356,7 @@ void ChatPage::setupUiExtensions()
     ui->friendRequestNavButton->setToolButtonStyle(Qt::ToolButtonIconOnly);
     ui->chatNavButton->setFixedSize(30, 30);
     ui->friendRequestNavButton->setFixedSize(30, 30);
+    ui->mockReceiveButton->hide();
     ui->navLayout->setAlignment(ui->chatNavButton, Qt::AlignHCenter);
     ui->navLayout->setAlignment(ui->friendRequestNavButton, Qt::AlignHCenter);
     ui->composerFrame->setMinimumHeight(165);
@@ -403,10 +389,8 @@ void ChatPage::setupUiExtensions()
         "QLabel#chatTitleLabel { font: 13pt 'Microsoft YaHei UI'; color:#111827; }"
         "QToolButton#headerActionButton1, QToolButton#headerActionButton2, QToolButton#headerActionButton3 { background:#EAE9EF; border:none; border-radius:12px; padding:4px 10px; color:#334155; font: 9pt 'Microsoft YaHei UI'; }"
         "QToolButton#headerActionButton1:pressed, QToolButton#headerActionButton2:pressed, QToolButton#headerActionButton3:pressed { background:#d9d6df; padding-top:5px; padding-left:11px; }"
-        "QPushButton#sendButton, QPushButton#mockReceiveButton { min-width:82px; min-height:34px; border:none; border-radius:17px; font: 10pt 'Microsoft YaHei UI'; }"
-        "QPushButton#mockReceiveButton { background:#EAE9EF; color:#334155; }"
+        "QPushButton#sendButton { min-width:82px; min-height:34px; border:none; border-radius:17px; font: 10pt 'Microsoft YaHei UI'; }"
         "QPushButton#sendButton { background:#CBCACF; color:#111827; }"
-        "QPushButton#mockReceiveButton:pressed { background:#d9d6df; padding-top:1px; }"
         "QPushButton#sendButton:pressed { background:#b9b7be; padding-top:1px; }"
         "QPushButton#mockFriendRequestButton { min-width:110px; min-height:34px; border:none; border-radius:17px; background:#CBCACF; color:#111827; font: 10pt 'Microsoft YaHei UI'; }"
         "QPushButton#mockFriendRequestButton:pressed { background:#b9b7be; padding-top:1px; }"
@@ -430,7 +414,6 @@ void ChatPage::setupUiExtensions()
     connect(_contactListWidget, &ContactListWidget::contactActivated, this, &ChatPage::onContactActivated);
     connect(_messageListWidget, &MessageListWidget::reachedTop, this, &ChatPage::onHistoryTopReached);
     connect(ui->sendButton, &QPushButton::clicked, this, &ChatPage::onSendClicked);
-    connect(ui->mockReceiveButton, &QPushButton::clicked, this, &ChatPage::onMockReceiveClicked);
     connect(_chatInputEdit, &ChatInputEdit::imagePasted, this, &ChatPage::onImagePasted);
     connect(_chatInputEdit, &ChatInputEdit::sendRequested, this, &ChatPage::onSendClicked);
     connect(ui->searchLineEdit, &QLineEdit::textChanged, this, &ChatPage::onSearchTextChanged);
@@ -448,6 +431,15 @@ void ChatPage::setupUiExtensions()
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_server_closed, this, &ChatPage::onServerClosed);
     connect(&HttpMgr::getInstance(), &HttpMgr::sig_chat_mod_http_finished, this, &ChatPage::onChatHttpFinished);
     connect(_messageListWidget, &MessageListWidget::retryRequested, this, &ChatPage::onRetryMessageRequested);
+    connect(ui->headerActionButton1, &QToolButton::clicked, this, [this]() {
+        QMessageBox::information(this, QString::fromUtf8(u8"\u63d0\u793a"), QString::fromUtf8(u8"\u8fd8\u6ca1\u5f00\u53d1\u5462"));
+    });
+    connect(ui->headerActionButton2, &QToolButton::clicked, this, [this]() {
+        QMessageBox::information(this, QString::fromUtf8(u8"\u63d0\u793a"), QString::fromUtf8(u8"\u8fd8\u6ca1\u5f00\u53d1\u5462"));
+    });
+    connect(ui->headerActionButton3, &QToolButton::clicked, this, [this]() {
+        QMessageBox::information(this, QString::fromUtf8(u8"\u63d0\u793a"), QString::fromUtf8(u8"\u8fd8\u6ca1\u5f00\u53d1\u5462"));
+    });
 }
 
 void ChatPage::setupFriendRequestPage()
@@ -506,7 +498,7 @@ void ChatPage::setupNavigation()
 void ChatPage::setupMockData()
 {
     _conversations.clear();
-    _currentConversation = 0;
+    _currentConversation = -1;
 }
 
 void ChatPage::bindConversation(int index)
@@ -592,6 +584,7 @@ void ChatPage::refreshContactSummaries()
         const MessageItem &last = conversation.messages.back();
         conversation.contact.lastMessage = normalizeContactPreview(formatMessagePreview(last));
         conversation.contact.timeText = formatMessageTime(last.timestamp);
+        conversation.contact.updatedAt = last.timestamp;
     }
 }
 
@@ -632,10 +625,12 @@ int ChatPage::moveConversationToFront(int index)
 QDateTime ChatPage::latestTimestamp(const Conversation &conversation) const
 {
     if (conversation.messages.isEmpty()) {
-        return QDateTime();
+        return conversation.contact.updatedAt;
     }
 
-    return conversation.messages.back().timestamp;
+    return conversation.messages.back().timestamp.isValid()
+        ? conversation.messages.back().timestamp
+        : conversation.contact.updatedAt;
 }
 
 MessageItem ChatPage::createOutgoingTextMessage(const QString &text)
@@ -895,6 +890,7 @@ void ChatPage::applyFriendList(const QJsonArray &friends)
         conversation.contact.name = obj.value("name").toString();
         conversation.contact.lastMessage = normalizeContactPreview(obj.value("last_message").toString());
         conversation.contact.timeText = obj.value("last_time").toString();
+        conversation.contact.updatedAt = QDateTime::fromString(obj.value("updated_at").toString(), Qt::ISODate);
         conversation.contact.unreadCount = obj.value("unread_count").toInt();
         conversation.contact.avatarColor = avatarColorForName(
             conversation.contact.name.isEmpty() ? QString::number(uid) : conversation.contact.name);
@@ -915,8 +911,12 @@ void ChatPage::applyFriendList(const QJsonArray &friends)
         sortConversationsByLatest();
         restoreCurrentConversation(currentContactId);
         syncContactList();
-        bindConversation(_currentConversation);
-        requestPrivateMessages(_conversations[_currentConversation].contact.id, 10);
+        if (_currentConversation >= 0 && _currentConversation < _conversations.size()) {
+            bindConversation(_currentConversation);
+            requestPrivateMessages(_conversations[_currentConversation].contact.id, 10);
+        } else {
+            applyEmptyConversationState();
+        }
     } else {
         syncContactList();
         applyEmptyConversationState();
@@ -1072,6 +1072,9 @@ void ChatPage::onFriendRequestsRsp(const QJsonObject &payload)
             }
         }
     }
+    std::stable_sort(mergedRequests.begin(), mergedRequests.end(), [](const FriendRequestItem &lhs, const FriendRequestItem &rhs) {
+        return lhs.id > rhs.id;
+    });
     _friendRequests = mergedRequests;
 
     if (ui->rightStackedWidget->currentIndex() != 1) {
@@ -1123,7 +1126,11 @@ void ChatPage::onHandleFriendRequestRsp(const QJsonObject &payload)
         sortConversationsByLatest();
         restoreCurrentConversation(currentContactId);
         syncContactList();
-        bindConversation(_currentConversation);
+        if (_currentConversation >= 0 && _currentConversation < _conversations.size()) {
+            bindConversation(_currentConversation);
+        } else {
+            applyEmptyConversationState();
+        }
     } else {
         syncContactList();
         applyEmptyConversationState();
@@ -1151,6 +1158,7 @@ void ChatPage::onFriendListPush(const QJsonObject &payload)
             obj["name"] = conversation.contact.name;
             obj["last_message"] = conversation.contact.lastMessage;
             obj["last_time"] = conversation.contact.timeText;
+            obj["updated_at"] = conversation.contact.updatedAt.toString(Qt::ISODate);
             obj["unread_count"] = conversation.contact.unreadCount;
             merged.insert(conversation.contact.id, obj);
         }
@@ -1243,13 +1251,15 @@ void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages, b
     refreshContactSummaries();
     syncContactList();
     updateChatUnreadNotification();
-    if (_currentConversation == index) {
-        if (prependHistory && !prependedMessages.isEmpty()) {
-            _messageListWidget->prependMessages(prependedMessages);
-        } else {
-            bindConversation(index);
-        }
-    }
+      if (_currentConversation == index) {
+          if (prependHistory && !prependedMessages.isEmpty()) {
+              const QVector<MessageItem> hydratedPrepended =
+                  _conversations[index].messages.mid(0, prependedMessages.size());
+              _messageListWidget->prependMessages(hydratedPrepended);
+          } else {
+              bindConversation(index);
+          }
+      }
 }
 
 void ChatPage::appendPrivateMessage(const QJsonObject &obj, bool moveToTop)
@@ -1528,7 +1538,7 @@ void ChatPage::ensureConversationForFriend(FriendRequestItem &item)
 void ChatPage::restoreCurrentConversation(int contactId)
 {
     if (contactId < 0) {
-        _currentConversation = qBound(0, _currentConversation, qMax(0, _conversations.size() - 1));
+        _currentConversation = -1;
         return;
     }
 
@@ -1538,7 +1548,7 @@ void ChatPage::restoreCurrentConversation(int contactId)
         return;
     }
 
-    _currentConversation = qBound(0, _currentConversation, qMax(0, _conversations.size() - 1));
+    _currentConversation = -1;
 }
 
 void ChatPage::hydrateConversationMessages(Conversation &conversation)
@@ -1553,14 +1563,14 @@ void ChatPage::hydrateConversationMessages(Conversation &conversation)
 
     for (MessageItem &message : conversation.messages) {
         if (message.outgoing) {
-            if (message.senderName.isEmpty()) {
-                message.senderName = _currentUserName;
-            }
+            message.senderName = _currentUserName.isEmpty()
+                ? QString::number(_currentUserId)
+                : _currentUserName;
             message.avatarColor = outgoingColor;
         } else {
-            if (message.senderName.isEmpty()) {
-                message.senderName = contactName;
-            }
+            message.senderName = contactName.isEmpty()
+                ? QString::number(conversation.contact.id)
+                : contactName;
             message.avatarColor = incomingColor;
         }
         populateImageMessage(message);
@@ -1827,19 +1837,21 @@ void ChatPage::onHistoryTopReached()
         _currentUserId,
         10,
         beforeMsgId);
-    if (!localOlder.isEmpty()) {
-        QVector<MessageItem> prepared = localOlder;
-        for (MessageItem &message : prepared) {
-            populateImageMessage(message);
-        }
-        conversation.messages = prepared + conversation.messages;
-        hydrateConversationMessages(conversation);
-        _messageListWidget->prependMessages(prepared);
-        if (prepared.size() < 10) {
-            conversation.hasMoreHistory = false;
-        }
-        return;
-    }
+      if (!localOlder.isEmpty()) {
+          QVector<MessageItem> prepared = localOlder;
+          for (MessageItem &message : prepared) {
+              populateImageMessage(message);
+          }
+          conversation.messages = prepared + conversation.messages;
+          hydrateConversationMessages(conversation);
+          const QVector<MessageItem> hydratedPrepared =
+              conversation.messages.mid(0, prepared.size());
+          _messageListWidget->prependMessages(hydratedPrepared);
+          if (prepared.size() < 10) {
+              conversation.hasMoreHistory = false;
+          }
+          return;
+      }
 
     conversation.loadingHistory = true;
     requestOlderPrivateMessages(conversation.contact.id, beforeMsgId, 10);

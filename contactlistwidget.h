@@ -32,7 +32,7 @@ private:
     QWidget *_contentWidget;
     QVector<ContactItem> _contacts;
     QVector<ContactCell *> _cellPool;
-    int _currentIndex = 0;
+    int _currentIndex = -1;
 };
 
 #endif // CONTACTLISTWIDGET_H

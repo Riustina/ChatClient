@@ -39,6 +39,19 @@ RegisterDialog::RegisterDialog(QWidget *parent)
 
     initHttpHandlers();
 
+    _verifyCountdownTimer.setInterval(1000);
+    connect(&_verifyCountdownTimer, &QTimer::timeout, this, [this]() {
+        if (_verifyCountdownRemaining > 0) {
+            --_verifyCountdownRemaining;
+        }
+        if (_verifyCountdownRemaining <= 0) {
+            _verifyCountdownTimer.stop();
+            ui->sendCodeButton->setEnabled(true);
+        }
+        updateVerifyButtonText();
+    });
+    updateVerifyButtonText();
+
     connect(&HttpMgr::getInstance(), &HttpMgr::sig_reg_mod_http_finished, this, &RegisterDialog::slot_reg_mod_http_finished);
 }
 
@@ -54,12 +67,17 @@ void RegisterDialog::initHttpHandlers()
         int error = jsonObj.value("error").toInt();
         if (error != ErrorCodes::SUCCESS) {
             qDebug() << "[RegisterDialog.cpp] 函数 [initHttpHandlers] 获取验证码失败: " << jsonObj;
-            QMessageBox::warning(this, "错误", "获取验证码失败，请重试");
+            startVerifyCountdown(0);
+            QMessageBox::warning(this,
+                                 QString::fromUtf8(u8"\u9519\u8bef"),
+                                 QString::fromUtf8(u8"\u83b7\u53d6\u9a8c\u8bc1\u7801\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5"));
             return;
         }
 
         auto email = jsonObj.value("email").toString();
-        QMessageBox::information(this, "成功", "验证码已发送到 " + email);
+        QMessageBox::information(this,
+                                 QString::fromUtf8(u8"\u6210\u529f"),
+                                 QString::fromUtf8(u8"\u9a8c\u8bc1\u7801\u5df2\u53d1\u9001\u5230 ") + email);
     };
 
     // 注册用户注册回包的逻辑
@@ -78,22 +96,59 @@ void RegisterDialog::initHttpHandlers()
 
 void RegisterDialog::on_sendCodeButton_clicked()
 {
+    if (_verifyCountdownRemaining > 0) {
+        return;
+    }
+
     // 验证emailLineEdit中的邮箱地址合法性
     QString email = ui->emailLineEdit->text();
     QRegularExpression emailRegex(R"(^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$)");
     if (!emailRegex.match(email).hasMatch()) {
-        QMessageBox::warning(this, "错误", "邮箱格式不正确");
+        QMessageBox::warning(this,
+                             QString::fromUtf8(u8"\u9519\u8bef"),
+                             QString::fromUtf8(u8"\u90ae\u7bb1\u683c\u5f0f\u4e0d\u6b63\u786e"));
         return;
     }
+    startVerifyCountdown();
     QJsonObject jsonObj;
     jsonObj["email"] = email;
     HttpMgr::getInstance().PostHttpReq(QUrl(gate_url_prefix + "/get_verifycode"), jsonObj, ReqId::ID_GET_VERIFY_CODE, Modules::REGISTERMOD);
 }
 
+void RegisterDialog::startVerifyCountdown(int seconds)
+{
+    _verifyCountdownRemaining = qMax(0, seconds);
+    ui->sendCodeButton->setEnabled(_verifyCountdownRemaining <= 0);
+    updateVerifyButtonText();
+    if (_verifyCountdownRemaining > 0) {
+        _verifyCountdownTimer.start();
+    } else {
+        _verifyCountdownTimer.stop();
+    }
+}
+
+void RegisterDialog::updateVerifyButtonText()
+{
+    if (_verifyCountdownRemaining > 0) {
+        ui->sendCodeButton->setText(QString::fromUtf8(u8"%1秒后重发").arg(_verifyCountdownRemaining));
+    } else {
+        ui->sendCodeButton->setText(QString::fromUtf8(u8"获取验证码"));
+    }
+}
+
 void RegisterDialog::slot_reg_mod_http_finished(ReqId id, QString res, ErrorCodes err)
 {
     if (err != ErrorCodes::SUCCESS) {
-        QMessageBox::warning(this, "错误", "注册失败，请重试");
+        if (id == ReqId::ID_GET_VERIFY_CODE) {
+            startVerifyCountdown(0);
+            QMessageBox::warning(this,
+                                 QString::fromUtf8(u8"\u9519\u8bef"),
+                                 QString::fromUtf8(u8"\u83b7\u53d6\u9a8c\u8bc1\u7801\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5"));
+        } else {
+            QMessageBox::warning(this,
+                                 QString::fromUtf8(u8"\u9519\u8bef"),
+                                 QString::fromUtf8(u8"\u6ce8\u518c\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5"));
+        }
         return;
     }
 

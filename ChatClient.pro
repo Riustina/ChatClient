@@ -69,9 +69,9 @@ RESOURCES += \
 DISTFILES += \
     config.ini
 
-
 # 仅针对 Windows 平台处理
 win32 {
+    RC_ICONS = icons/app_logo.ico
     # 1. 定义源文件路径 (工程目录下的 config.ini)
     CONFIG_SOURCE = $$PWD/config.ini
     CONFIG_SOURCE = $$replace(CONFIG_SOURCE, /, \\)

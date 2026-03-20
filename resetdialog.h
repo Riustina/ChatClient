@@ -4,6 +4,7 @@
 #include <QDialog>
 #include <QMap>
 #include <QJsonObject>
+#include <QTimer>
 #include <functional>
 #include "global.h"
 
@@ -28,7 +29,11 @@ private slots:
 private:
     Ui::ResetDialog *ui;
     void initHttpHandlers();
+    void startVerifyCountdown(int seconds = 60);
+    void updateVerifyButtonText();
     QMap<ReqId, std::function<void(const QJsonObject&)>> _handlers;
+    QTimer _verifyCountdownTimer;
+    int _verifyCountdownRemaining = 0;
 
 signals:
     void switchToLogin();

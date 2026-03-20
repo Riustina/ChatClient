@@ -61,6 +61,10 @@ LoginDialog::~LoginDialog()
 
 void LoginDialog::on_loginBtn_clicked()
 {
+    if (_loginRequestInFlight) {
+        return;
+    }
+
     QString email = ui->emailLineEdit->text().trimmed();
     QString password = ui->pswdLineEdit->text().trimmed();
 
@@ -73,6 +77,8 @@ void LoginDialog::on_loginBtn_clicked()
     QJsonObject json_obj;
     json_obj["email"] = email;
     json_obj["passwd"] = password;
+    _loginRequestInFlight = true;
+    ui->loginBtn->setEnabled(false);
     HttpMgr::getInstance().PostHttpReq(QUrl(gate_url_prefix + "/user_login"),
                                        json_obj, ReqId::ID_LOGIN_USER, Modules::LOGINMOD);
 }
@@ -80,6 +86,10 @@ void LoginDialog::on_loginBtn_clicked()
 void LoginDialog::slot_login_mod_http_finished(ReqId id, QString res, ErrorCodes err)
 {
     if (err != ErrorCodes::SUCCESS) {
+        if (id == ReqId::ID_LOGIN_USER) {
+            _loginRequestInFlight = false;
+            ui->loginBtn->setEnabled(true);
+        }
         QMessageBox::warning(this, "错误", "网络请求失败，请重试");
         return;
     }
@@ -87,10 +97,18 @@ void LoginDialog::slot_login_mod_http_finished(ReqId id, QString res, ErrorCodes
     // 解析 JSON 字符串，转化为 QByteArray
     QJsonDocument jsonDoc = QJsonDocument::fromJson(res.toUtf8());
     if (jsonDoc.isNull()) {
+        if (id == ReqId::ID_LOGIN_USER) {
+            _loginRequestInFlight = false;
+            ui->loginBtn->setEnabled(true);
+        }
         qDebug() << "[LoginDialog.cpp] 函数 [slot_login_mod_http_finished] JSON 解析失败: " << res;
         return;
     }
     if (!jsonDoc.isObject()) {
+        if (id == ReqId::ID_LOGIN_USER) {
+            _loginRequestInFlight = false;
+            ui->loginBtn->setEnabled(true);
+        }
         qDebug() << "[LoginDialog.cpp] 函数 [slot_login_mod_http_finished] JSON 不是对象: " << res;
         return;
     }
@@ -102,6 +120,8 @@ void LoginDialog::initHttpHandlers()
     _handlers[ReqId::ID_LOGIN_USER] = [this](const QJsonObject& jsonObj) {
         int error = jsonObj.value("error").toInt();
         if (error != ErrorCodes::SUCCESS) {
+            _loginRequestInFlight = false;
+            ui->loginBtn->setEnabled(true);
             qDebug() << "[LoginDialog.cpp] 函数 [initHttpHandlers] 登录失败: " << jsonObj;
             QString errorMessage = jsonObj.value("message").toString();
             if (errorMessage.isEmpty()) {
@@ -142,11 +162,15 @@ void LoginDialog::slot_tcp_con_finish(bool bsuccess)
         emit TcpMgr::getInstance().sig_send_data(ReqId::ID_CHAT_LOGIN, jsonString);
     }
     else {
+        _loginRequestInFlight = false;
+        ui->loginBtn->setEnabled(true);
         QMessageBox::warning(this, "错误", "TCP 长链接请求失败，请重试");
     }
 }
 
 void LoginDialog::slot_login_failed(int err)
 {
+    _loginRequestInFlight = false;
+    ui->loginBtn->setEnabled(true);
     QMessageBox::warning(this, "登录失败", "登录失败，错误码: " + QString::number(err));
 }

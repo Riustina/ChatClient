@@ -41,6 +41,19 @@ ResetDialog::ResetDialog(QWidget *parent)
 
     initHttpHandlers();
 
+    _verifyCountdownTimer.setInterval(1000);
+    connect(&_verifyCountdownTimer, &QTimer::timeout, this, [this]() {
+        if (_verifyCountdownRemaining > 0) {
+            --_verifyCountdownRemaining;
+        }
+        if (_verifyCountdownRemaining <= 0) {
+            _verifyCountdownTimer.stop();
+            ui->getCodeBtn->setEnabled(true);
+        }
+        updateVerifyButtonText();
+    });
+    updateVerifyButtonText();
+
     connect(&HttpMgr::getInstance(), &HttpMgr::sig_reset_mod_http_finished,
             this, &ResetDialog::slot_reset_mod_http_finished);
 }
@@ -57,12 +70,17 @@ void ResetDialog::initHttpHandlers()
         int error = jsonObj.value("error").toInt();
         if (error != ErrorCodes::SUCCESS) {
             qDebug() << "[ResetDialog.cpp] 函数 [initHttpHandlers] 获取验证码失败: " << jsonObj;
-            QMessageBox::warning(this, "错误", "获取验证码失败，请重试");
+            startVerifyCountdown(0);
+            QMessageBox::warning(this,
+                                 QString::fromUtf8(u8"\u9519\u8bef"),
+                                 QString::fromUtf8(u8"\u83b7\u53d6\u9a8c\u8bc1\u7801\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5"));
             return;
         }
 
         auto email = jsonObj.value("email").toString();
-        QMessageBox::information(this, "成功", "验证码已发送到 " + email);
+        QMessageBox::information(this,
+                                 QString::fromUtf8(u8"\u6210\u529f"),
+                                 QString::fromUtf8(u8"\u9a8c\u8bc1\u7801\u5df2\u53d1\u9001\u5230 ") + email);
     };
 
     // 重置密码回包
@@ -81,13 +99,20 @@ void ResetDialog::initHttpHandlers()
 
 void ResetDialog::on_getCodeBtn_clicked()
 {
-    QString email = ui->emailLineEdit->text().trimmed();
-    QRegularExpression emailRegex(R"(^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$)");
-    if (!emailRegex.match(email).hasMatch()) {
-        QMessageBox::warning(this, "错误", "邮箱格式不正确");
+    if (_verifyCountdownRemaining > 0) {
         return;
     }
 
+    QString email = ui->emailLineEdit->text().trimmed();
+    QRegularExpression emailRegex(R"(^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$)");
+    if (!emailRegex.match(email).hasMatch()) {
+        QMessageBox::warning(this,
+                             QString::fromUtf8(u8"\u9519\u8bef"),
+                             QString::fromUtf8(u8"\u90ae\u7bb1\u683c\u5f0f\u4e0d\u6b63\u786e"));
+        return;
+    }
+
+    startVerifyCountdown();
     QJsonObject jsonObj;
     jsonObj["email"] = email;
     HttpMgr::getInstance().PostHttpReq(
@@ -96,6 +121,27 @@ void ResetDialog::on_getCodeBtn_clicked()
         ReqId::ID_GET_VERIFY_CODE,
         Modules::RESETMOD
         );
+}
+
+void ResetDialog::startVerifyCountdown(int seconds)
+{
+    _verifyCountdownRemaining = qMax(0, seconds);
+    ui->getCodeBtn->setEnabled(_verifyCountdownRemaining <= 0);
+    updateVerifyButtonText();
+    if (_verifyCountdownRemaining > 0) {
+        _verifyCountdownTimer.start();
+    } else {
+        _verifyCountdownTimer.stop();
+    }
+}
+
+void ResetDialog::updateVerifyButtonText()
+{
+    if (_verifyCountdownRemaining > 0) {
+        ui->getCodeBtn->setText(QString::fromUtf8(u8"%1\u79d2\u540e\u91cd\u53d1").arg(_verifyCountdownRemaining));
+    } else {
+        ui->getCodeBtn->setText(QString::fromUtf8(u8"\u83b7\u53d6\u9a8c\u8bc1\u7801"));
+    }
 }
 
 void ResetDialog::on_cancelBtn_clicked()
@@ -133,7 +179,12 @@ void ResetDialog::on_resetBtn_clicked()
 void ResetDialog::slot_reset_mod_http_finished(ReqId id, QString res, ErrorCodes err)
 {
     if (err != ErrorCodes::SUCCESS) {
-        QMessageBox::warning(this, "错误", "网络请求失败，请重试");
+        if (id == ReqId::ID_GET_VERIFY_CODE) {
+            startVerifyCountdown(0);
+        }
+        QMessageBox::warning(this,
+                             QString::fromUtf8(u8"\u9519\u8bef"),
+                             QString::fromUtf8(u8"\u7f51\u7edc\u8bf7\u6c42\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5"));
         return;
     }
 
