@@ -27,7 +27,7 @@ public:
     bool setConversationCursor(int contactId, qint64 msgId);
     QVector<ContactItem> loadFriendList();
     QVector<FriendRequestItem> loadFriendRequests(int currentUserId);
-    QVector<MessageItem> loadConversationMessages(int contactId, int currentUserId);
+    QVector<MessageItem> loadConversationMessages(int contactId, int currentUserId, int limit = 0, qint64 beforeMsgId = 0);
 
 private:
     LocalDb() = default;

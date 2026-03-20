@@ -69,11 +69,14 @@ private slots:
     void onChatHttpFinished(ReqId id, QString res, ErrorCodes err);
     void onRetryMessageRequested(const QString &clientMsgId);
     void onServerClosed();
+    void onHistoryTopReached();
 
 private:
     struct Conversation {
         ContactItem contact;
         QVector<MessageItem> messages;
+        bool hasMoreHistory = true;
+        bool loadingHistory = false;
     };
 
     struct PendingImageUpload {
@@ -111,7 +114,7 @@ private:
     void refreshFriendRequestList();
     void applyFriendList(const QJsonArray &friends);
     MessageItem messageFromJson(const QJsonObject &obj) const;
-    void applyPrivateMessages(int contactId, const QJsonArray &messages, bool incremental);
+    void applyPrivateMessages(int contactId, const QJsonArray &messages, bool incremental, bool prependHistory = false);
     void appendPrivateMessage(const QJsonObject &obj, bool moveToTop);
     void ensureConversationForFriend(FriendRequestItem &item);
     void restoreCurrentConversation(int contactId);
@@ -119,7 +122,8 @@ private:
     void ensureConversationMessagesLoaded(int index);
     void requestFriendList();
     void requestFriendRequests();
-    void requestPrivateMessages(int contactId, int limit = 50, qint64 afterMsgId = -1);
+    void requestPrivateMessages(int contactId, int limit = 10, qint64 afterMsgId = -1);
+    void requestOlderPrivateMessages(int contactId, qint64 beforeMsgId, int limit = 10);
     void requestMarkConversationRead(int contactId);
     bool resolveAddFriendTarget(const QString &text, ContactItem &contact) const;
     void updateNavigationIcons();

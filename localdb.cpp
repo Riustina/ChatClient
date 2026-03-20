@@ -547,7 +547,7 @@ QVector<FriendRequestItem> LocalDb::loadFriendRequests(int currentUserId)
     return requests;
 }
 
-QVector<MessageItem> LocalDb::loadConversationMessages(int contactId, int currentUserId)
+QVector<MessageItem> LocalDb::loadConversationMessages(int contactId, int currentUserId, int limit, qint64 beforeMsgId)
 {
     QVector<MessageItem> messages;
     QSqlDatabase db = QSqlDatabase::database(kConnectionName);
@@ -557,10 +557,31 @@ QVector<MessageItem> LocalDb::loadConversationMessages(int contactId, int curren
     }
 
     QSqlQuery query(db);
-    query.prepare(QStringLiteral(
-        "SELECT msg_id, from_uid, to_uid, content_type, content, created_at "
-        "FROM private_message WHERE contact_id = ? ORDER BY created_at ASC, msg_id ASC"));
-    query.addBindValue(contactId);
+    if (beforeMsgId > 0 && limit > 0) {
+        query.prepare(QStringLiteral(
+            "SELECT * FROM ("
+            "SELECT msg_id, from_uid, to_uid, content_type, content, created_at "
+            "FROM private_message WHERE contact_id = ? AND msg_id < ? "
+            "ORDER BY created_at DESC, msg_id DESC LIMIT ?"
+            ") t ORDER BY created_at ASC, msg_id ASC"));
+        query.addBindValue(contactId);
+        query.addBindValue(beforeMsgId);
+        query.addBindValue(limit);
+    } else if (limit > 0) {
+        query.prepare(QStringLiteral(
+            "SELECT * FROM ("
+            "SELECT msg_id, from_uid, to_uid, content_type, content, created_at "
+            "FROM private_message WHERE contact_id = ? "
+            "ORDER BY created_at DESC, msg_id DESC LIMIT ?"
+            ") t ORDER BY created_at ASC, msg_id ASC"));
+        query.addBindValue(contactId);
+        query.addBindValue(limit);
+    } else {
+        query.prepare(QStringLiteral(
+            "SELECT msg_id, from_uid, to_uid, content_type, content, created_at "
+            "FROM private_message WHERE contact_id = ? ORDER BY created_at ASC, msg_id ASC"));
+        query.addBindValue(contactId);
+    }
     if (!query.exec()) {
         _lastError = query.lastError().text();
         qWarning() << "[LocalDb] 璇诲彇 private_message 澶辫触:" << _lastError;

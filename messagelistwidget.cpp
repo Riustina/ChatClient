@@ -19,6 +19,14 @@ MessageListWidget::MessageListWidget(QWidget *parent)
 
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
         _autoFollowLatest = isNearBottom();
+        if (verticalScrollBar()->maximum() > 0 && isNearTop()) {
+            if (_topSignalArmed) {
+                _topSignalArmed = false;
+                emit reachedTop();
+            }
+        } else {
+            _topSignalArmed = true;
+        }
         updateVisibleCells();
     });
 }
@@ -41,6 +49,21 @@ void MessageListWidget::appendMessage(const MessageItem &message)
     if (shouldFollow) {
         scrollToBottom();
     }
+}
+
+void MessageListWidget::prependMessages(const QVector<MessageItem> &messages)
+{
+    if (messages.isEmpty()) {
+        return;
+    }
+
+    const int oldMax = verticalScrollBar()->maximum();
+    const int oldValue = verticalScrollBar()->value();
+    _messages = messages + _messages;
+    recalculateLayout();
+    updateVisibleCells();
+    const int delta = verticalScrollBar()->maximum() - oldMax;
+    verticalScrollBar()->setValue(oldValue + qMax(0, delta));
 }
 
 void MessageListWidget::resizeEvent(QResizeEvent *event)
@@ -112,6 +135,11 @@ void MessageListWidget::updateVisibleCells()
 bool MessageListWidget::isNearBottom() const
 {
     return verticalScrollBar()->value() >= verticalScrollBar()->maximum() - 24;
+}
+
+bool MessageListWidget::isNearTop() const
+{
+    return verticalScrollBar()->value() <= 12;
 }
 
 void MessageListWidget::scrollToBottom()

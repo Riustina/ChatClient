@@ -126,7 +126,7 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
     }
 
     if (!_conversations.isEmpty()) {
-        _conversations[0].messages = LocalDb::instance().loadConversationMessages(_conversations[0].contact.id, _currentUserId);
+        _conversations[0].messages = LocalDb::instance().loadConversationMessages(_conversations[0].contact.id, _currentUserId, 10);
         hydrateConversationMessages(_conversations[0]);
         qDebug() << "[ChatPage] setCurrentUser 从本地数据库恢复默认会话消息:" << _conversations[0].messages.size()
                  << "条, contactId:" << _conversations[0].contact.id;
@@ -179,7 +179,7 @@ void ChatPage::onContactActivated(int index)
     bindConversation(index);
     syncContactList();
     if (index >= 0 && index < _conversations.size()) {
-        requestPrivateMessages(_conversations[index].contact.id);
+        requestPrivateMessages(_conversations[index].contact.id, 10);
     }
 }
 
@@ -416,6 +416,7 @@ void ChatPage::setupUiExtensions()
     qApp->installEventFilter(this);
 
     connect(_contactListWidget, &ContactListWidget::contactActivated, this, &ChatPage::onContactActivated);
+    connect(_messageListWidget, &MessageListWidget::reachedTop, this, &ChatPage::onHistoryTopReached);
     connect(ui->sendButton, &QPushButton::clicked, this, &ChatPage::onSendClicked);
     connect(ui->mockReceiveButton, &QPushButton::clicked, this, &ChatPage::onMockReceiveClicked);
     connect(_chatInputEdit, &ChatInputEdit::imagePasted, this, &ChatPage::onImagePasted);
@@ -892,7 +893,7 @@ void ChatPage::applyFriendList(const QJsonArray &friends)
         restoreCurrentConversation(currentContactId);
         syncContactList();
         bindConversation(_currentConversation);
-        requestPrivateMessages(_conversations[_currentConversation].contact.id);
+        requestPrivateMessages(_conversations[_currentConversation].contact.id, 10);
     } else {
         syncContactList();
         applyEmptyConversationState();
@@ -1169,7 +1170,7 @@ MessageItem ChatPage::messageFromJson(const QJsonObject &obj) const
     return item;
 }
 
-void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages, bool incremental)
+void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages, bool incremental, bool prependHistory)
 {
     const int index = conversationIndexById(contactId);
     if (index < 0) {
@@ -1181,6 +1182,7 @@ void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages, b
     for (const QJsonValue &value : messages) {
         rebuilt.push_back(messageFromJson(value.toObject()));
     }
+    QVector<MessageItem> prependedMessages;
 
     if (!incremental) {
         _conversations[index].messages = rebuilt;
@@ -1192,11 +1194,18 @@ void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages, b
         }
         for (const MessageItem &item : std::as_const(rebuilt)) {
             if (!existingIds.contains(item.id)) {
-                _conversations[index].messages.push_back(item);
+                if (prependHistory) {
+                    prependedMessages.push_back(item);
+                } else {
+                    _conversations[index].messages.push_back(item);
+                }
             }
             if (!LocalDb::instance().upsertMessage(contactId, item, _currentUserId)) {
                 qWarning() << "[ChatPage] 淇濆瓨鍗曟潯澧為噺娑堟伅鍒版湰鍦版暟鎹簱澶辫触:" << LocalDb::instance().lastError();
             }
+        }
+        if (prependHistory && !prependedMessages.isEmpty()) {
+            _conversations[index].messages = prependedMessages + _conversations[index].messages;
         }
     }
     if (!incremental && !LocalDb::instance().replaceConversationMessages(contactId, rebuilt, _currentUserId)) {
@@ -1210,7 +1219,11 @@ void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages, b
     syncContactList();
     updateChatUnreadNotification();
     if (_currentConversation == index) {
-        bindConversation(index);
+        if (prependHistory && !prependedMessages.isEmpty()) {
+            _messageListWidget->prependMessages(prependedMessages);
+        } else {
+            bindConversation(index);
+        }
     }
 }
 
@@ -1285,6 +1298,19 @@ void ChatPage::requestPrivateMessages(int contactId, int limit, qint64 afterMsgI
     emit TcpMgr::getInstance().sig_send_data(ID_GET_PRIVATE_MESSAGES_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
 }
 
+void ChatPage::requestOlderPrivateMessages(int contactId, qint64 beforeMsgId, int limit)
+{
+    if (_currentUserId <= 0 || contactId <= 0 || beforeMsgId <= 0) {
+        return;
+    }
+
+    QJsonObject obj;
+    obj["contact_id"] = contactId;
+    obj["limit"] = limit;
+    obj["before_msg_id"] = beforeMsgId;
+    emit TcpMgr::getInstance().sig_send_data(ID_GET_PRIVATE_MESSAGES_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+}
+
 void ChatPage::requestMarkConversationRead(int contactId)
 {
     if (_currentUserId <= 0 || contactId <= 0) {
@@ -1304,11 +1330,25 @@ void ChatPage::onPrivateMessagesRsp(const QJsonObject &payload)
 
     const int contactId = payload.value("contact_id").toInt();
     const bool incremental = payload.value("incremental").toBool(false);
+    const bool history = payload.value("history").toBool(false);
     const qint64 afterMsgId = payload.value("after_msg_id").toVariant().toLongLong();
+    const qint64 beforeMsgId = payload.value("before_msg_id").toVariant().toLongLong();
     Q_UNUSED(afterMsgId);
+    Q_UNUSED(beforeMsgId);
     qDebug() << "[ChatPage] onPrivateMessagesRsp 收到服务端历史消息:"
              << payload.value("messages").toArray().size() << "条, contactId:" << contactId;
-    applyPrivateMessages(contactId, payload.value("messages").toArray(), incremental);
+    applyPrivateMessages(contactId, payload.value("messages").toArray(), incremental || history, history);
+    const int index = conversationIndexById(contactId);
+    if (index >= 0) {
+        if (history) {
+            _conversations[index].loadingHistory = false;
+            if (payload.value("messages").toArray().size() < 10) {
+                _conversations[index].hasMoreHistory = false;
+            }
+        } else if (!incremental && payload.value("messages").toArray().size() < 10) {
+            _conversations[index].hasMoreHistory = false;
+        }
+    }
 }
 
 void ChatPage::onSendPrivateMessageRsp(const QJsonObject &payload)
@@ -1513,7 +1553,7 @@ void ChatPage::ensureConversationMessagesLoaded(int index)
         return;
     }
 
-    _conversations[index].messages = LocalDb::instance().loadConversationMessages(_conversations[index].contact.id, _currentUserId);
+    _conversations[index].messages = LocalDb::instance().loadConversationMessages(_conversations[index].contact.id, _currentUserId, 10);
     hydrateConversationMessages(_conversations[index]);
     qDebug() << "[ChatPage] ensureConversationMessagesLoaded 从本地数据库恢复会话消息:"
              << _conversations[index].messages.size() << "条, contactId:" << _conversations[index].contact.id;
@@ -1738,6 +1778,46 @@ void ChatPage::markAllSendingMessagesFailed()
 void ChatPage::onServerClosed()
 {
     markAllSendingMessagesFailed();
+}
+
+void ChatPage::onHistoryTopReached()
+{
+    if (_currentConversation < 0 || _currentConversation >= _conversations.size()) {
+        return;
+    }
+
+    Conversation &conversation = _conversations[_currentConversation];
+    if (conversation.loadingHistory || !conversation.hasMoreHistory || conversation.messages.isEmpty()) {
+        return;
+    }
+
+    const qint64 beforeMsgId = conversation.messages.front().id;
+    if (beforeMsgId <= 0) {
+        conversation.hasMoreHistory = false;
+        return;
+    }
+
+    const QVector<MessageItem> localOlder = LocalDb::instance().loadConversationMessages(
+        conversation.contact.id,
+        _currentUserId,
+        10,
+        beforeMsgId);
+    if (!localOlder.isEmpty()) {
+        QVector<MessageItem> prepared = localOlder;
+        for (MessageItem &message : prepared) {
+            populateImageMessage(message);
+        }
+        conversation.messages = prepared + conversation.messages;
+        hydrateConversationMessages(conversation);
+        _messageListWidget->prependMessages(prepared);
+        if (prepared.size() < 10) {
+            conversation.hasMoreHistory = false;
+        }
+        return;
+    }
+
+    conversation.loadingHistory = true;
+    requestOlderPrivateMessages(conversation.contact.id, beforeMsgId, 10);
 }
 
 QString ChatPage::createClientMessageId() const
