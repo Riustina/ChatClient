@@ -228,7 +228,7 @@ public:
         , _fitToWindow(true)
     {
         setAttribute(Qt::WA_DeleteOnClose, true);
-        setWindowTitle(QStringLiteral("图片查看"));
+        setWindowTitle(QString::fromUtf8(u8"\u56fe\u7247\u67e5\u770b"));
         setModal(false);
         resize(1100, 800);
         setMinimumSize(720, 520);

@@ -1,7 +1,7 @@
 #include "contactcell.h"
 
-#include <QHBoxLayout>
 #include <QEnterEvent>
+#include <QHBoxLayout>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
@@ -33,6 +33,11 @@ QPixmap buildAvatarPixmap(const QString &name, const QColor &color, const QSize 
     return pixmap;
 }
 
+QString imagePreviewText()
+{
+    return QStringLiteral("[\u56fe\u7247]");
+}
+
 QString normalizePreviewText(const QString &text)
 {
     const QString trimmed = text.trimmed();
@@ -41,11 +46,20 @@ QString normalizePreviewText(const QString &text)
     }
 
     const QString lower = trimmed.toLower();
-    if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
-        || lower.endsWith(".bmp") || lower.endsWith(".webp") || lower.endsWith(".gif")
-        || lower.contains("/uploads/chat_images/") || lower.contains("\\uploads\\chat_images\\")
-        || trimmed.contains(QStringLiteral("图片"))) {
-        return QStringLiteral("[图片]");
+    const bool looksLikeImagePath = lower.endsWith(".png")
+        || lower.endsWith(".jpg")
+        || lower.endsWith(".jpeg")
+        || lower.endsWith(".bmp")
+        || lower.endsWith(".webp")
+        || lower.endsWith(".gif")
+        || lower.contains("/uploads/chat_images/")
+        || lower.contains("\\uploads\\chat_images\\");
+    const bool alreadyImagePreview = trimmed == QStringLiteral("[image]")
+        || trimmed == QStringLiteral("[IMAGE]")
+        || trimmed.contains(QStringLiteral("\u56fe\u7247"));
+
+    if (looksLikeImagePath || alreadyImagePreview) {
+        return imagePreviewText();
     }
 
     return trimmed;
@@ -89,6 +103,7 @@ ContactCell::ContactCell(QWidget *parent)
     headerRow->setFixedHeight(18);
 
     _messageLabel->setWordWrap(false);
+    _messageLabel->setTextFormat(Qt::PlainText);
     _messageLabel->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     _messageLabel->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     _messageLabel->setFixedHeight(16);
@@ -216,6 +231,7 @@ void ContactCell::updateStyles()
     _messageLabel->setFont(textFont);
     _timeLabel->setFont(textFont);
     _messageLabel->setFixedHeight(_messageLabel->fontMetrics().height() + 3);
+    updateMessageText();
     _nameLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     _timeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     _nameLabel->setStyleSheet("color:#18212f; background:transparent;");

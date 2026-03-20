@@ -98,8 +98,15 @@ void ChatPage::setCurrentUser(int uid, const QString &name)
     for (const ContactItem &contact : localContacts) {
         Conversation conversation;
         conversation.contact = contact;
+        conversation.contact.lastMessage = normalizeContactPreview(conversation.contact.lastMessage);
         conversation.contact.avatarColor = avatarColorForName(
             conversation.contact.name.isEmpty() ? QString::number(conversation.contact.id) : conversation.contact.name);
+        const QVector<MessageItem> localMessages = LocalDb::instance().loadConversationMessages(conversation.contact.id, uid);
+        if (!localMessages.isEmpty()) {
+            const MessageItem &lastMessage = localMessages.back();
+            conversation.contact.lastMessage = normalizeContactPreview(formatMessagePreview(lastMessage));
+            conversation.contact.timeText = formatMessageTime(lastMessage.timestamp);
+        }
         _conversations.push_back(conversation);
     }
 
@@ -244,7 +251,7 @@ void ChatPage::onMockReceiveClicked()
 void ChatPage::onImagePasted()
 {
     if (_chatInputEdit->hasPendingImage()) {
-        _chatInputEdit->setPlaceholderText(QStringLiteral("已插入图片预览，可直接退格删除。"));
+        _chatInputEdit->setPlaceholderText(QString::fromUtf8(u8"\u5df2\u63d2\u5165\u56fe\u7247\u9884\u89c8\uff0c\u53ef\u76f4\u63a5\u9000\u683c\u5220\u9664\u3002"));
     }
 }
 
@@ -688,7 +695,7 @@ MessageItem ChatPage::createIncomingMockMessage()
 QString ChatPage::formatMessagePreview(const MessageItem &message) const
 {
     if (message.type == ChatMessageType::Image) {
-        return QStringLiteral("[图片]");
+        return QString::fromUtf8(u8"[\u56fe\u7247]");
     }
     return message.text;
 }
@@ -1734,6 +1741,8 @@ QString ChatPage::normalizeContactPreview(const QString &text) const
     if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
         || lower.endsWith(".bmp") || lower.endsWith(".webp") || lower.endsWith(".gif")
         || lower.contains("/uploads/chat_images/") || lower.contains("\\uploads\\chat_images\\")
+        || trimmed == QStringLiteral("[image]")
+        || trimmed == QStringLiteral("[IMAGE]")
         || trimmed.contains(QString::fromUtf8(u8"\u56fe\u7247"))
         || trimmed.contains(QStringLiteral("鍥剧墖"))) {
         return QString::fromUtf8(u8"[\u56fe\u7247]");
