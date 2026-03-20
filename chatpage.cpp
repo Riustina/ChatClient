@@ -16,12 +16,18 @@
 #include <QBuffer>
 #include <QDateTime>
 #include <QEvent>
+#include <QDir>
 #include <QFocusEvent>
+#include <QFile>
+#include <QFileInfo>
 #include <QLineEdit>
 #include <QLabel>
 #include <QLinearGradient>
 #include <QMouseEvent>
 #include <QMessageBox>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QPainter>
 #include <QPointer>
 #include <QPushButton>
@@ -30,8 +36,10 @@
 #include <QJsonObject>
 #include <QRandomGenerator>
 #include <QScrollArea>
+#include <QStandardPaths>
 #include <QTimer>
 #include <QUuid>
+#include <QUrlQuery>
 #include <QVBoxLayout>
 #include <QStyle>
 #include <algorithm>
@@ -61,6 +69,7 @@ ChatPage::ChatPage(QWidget *parent)
     , _messageListWidget(new MessageListWidget(this))
     , _chatInputEdit(new ChatInputEdit(this))
     , _searchPopup(new SearchPopupWidget(this))
+    , _imageDownloadManager(new QNetworkAccessManager(this))
 {
     ui->setupUi(this);
 
@@ -414,6 +423,7 @@ void ChatPage::setupUiExtensions()
     connect(ui->searchLineEdit, &QLineEdit::textChanged, this, &ChatPage::onSearchTextChanged);
     connect(_searchPopup, &SearchPopupWidget::addFriendClicked, this, &ChatPage::onPopupAddFriendClicked);
     connect(_searchPopup, &SearchPopupWidget::contactClicked, this, &ChatPage::onPopupContactClicked);
+    connect(_imageDownloadManager, &QNetworkAccessManager::finished, this, &ChatPage::onImageDownloadFinished);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_search_user_rsp, this, &ChatPage::onSearchUserRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_add_friend_rsp, this, &ChatPage::onAddFriendRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_friend_requests_rsp, this, &ChatPage::onFriendRequestsRsp);
@@ -663,14 +673,11 @@ QByteArray ChatPage::encodeImageForUpload(const QImage &image) const
 
 void ChatPage::populateImageMessage(MessageItem &item) const
 {
-    if (item.type != ChatMessageType::Image || !item.image.isNull() || item.text.isEmpty()) {
+    if (item.type != ChatMessageType::Image || !item.image.isNull()) {
         return;
     }
 
-    const QImage image(item.text);
-    if (!image.isNull()) {
-        item.image = image;
-    }
+    const_cast<ChatPage *>(this)->ensureImageAvailable(item);
 }
 
 MessageItem ChatPage::createIncomingMockMessage()
@@ -1387,8 +1394,11 @@ void ChatPage::onChatHttpFinished(ReqId id, QString res, ErrorCodes err)
         return;
     }
 
-    const QString path = obj.value("path").toString();
-    if (uploadId.isEmpty() || path.isEmpty() || !_pendingImageUploadTargets.contains(uploadId)) {
+    const QString resourceKey = normalizeImageResourceKey(
+        obj.value("resource_key").toString().isEmpty()
+            ? obj.value("path").toString()
+            : obj.value("resource_key").toString());
+    if (uploadId.isEmpty() || resourceKey.isEmpty() || !_pendingImageUploadTargets.contains(uploadId)) {
         failUpload(uploadId);
         QMessageBox::warning(this,
                              QString::fromUtf8(u8"\u4e0a\u4f20\u5931\u8d25"),
@@ -1397,6 +1407,7 @@ void ChatPage::onChatHttpFinished(ReqId id, QString res, ErrorCodes err)
     }
 
     const PendingImageUpload pending = _pendingImageUploadTargets.take(uploadId);
+    cachePendingImage(pending.clientMsgId, resourceKey);
     if (!TcpMgr::getInstance().isChatAvailable()) {
         updatePendingMessageState(pending.clientMsgId, MessageSendState::Failed);
         QMessageBox::warning(this,
@@ -1408,7 +1419,7 @@ void ChatPage::onChatHttpFinished(ReqId id, QString res, ErrorCodes err)
     QJsonObject sendObj;
     sendObj["to_uid"] = pending.contactId;
     sendObj["content_type"] = "image";
-    sendObj["content"] = path;
+    sendObj["content"] = resourceKey;
     sendObj["client_msg_id"] = pending.clientMsgId;
     emit TcpMgr::getInstance().sig_send_data(
         ID_SEND_PRIVATE_MESSAGE_REQ,
@@ -1748,4 +1759,204 @@ QString ChatPage::normalizeContactPreview(const QString &text) const
         return QString::fromUtf8(u8"[\u56fe\u7247]");
     }
     return trimmed;
+}
+
+QString ChatPage::normalizeImageResourceKey(const QString &text) const
+{
+    QString normalized = text.trimmed();
+    if (normalized.isEmpty()) {
+        return {};
+    }
+
+    normalized.replace('\\', '/');
+    const QString marker = QStringLiteral("/uploads/chat_images/");
+    const int markerPos = normalized.indexOf(marker, 0, Qt::CaseInsensitive);
+    if (markerPos >= 0) {
+        const QString suffix = normalized.mid(markerPos + marker.size());
+        if (!suffix.isEmpty()) {
+            return QStringLiteral("chat_images/") + QFileInfo(suffix).fileName();
+        }
+    }
+
+    if (normalized.startsWith(QStringLiteral("chat_images/"), Qt::CaseInsensitive)) {
+        return QStringLiteral("chat_images/") + QFileInfo(normalized.mid(QStringLiteral("chat_images/").size())).fileName();
+    }
+
+    return normalized;
+}
+
+QString ChatPage::imageCacheDirectory() const
+{
+    const QString baseDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    return QDir(baseDir).filePath(QStringLiteral("image_cache"));
+}
+
+QString ChatPage::localImageCachePath(const QString &resourceKey) const
+{
+    const QString normalized = normalizeImageResourceKey(resourceKey);
+    if (normalized.isEmpty()) {
+        return {};
+    }
+
+    if (QFileInfo::exists(normalized)) {
+        return normalized;
+    }
+
+    if (!normalized.startsWith(QStringLiteral("chat_images/"), Qt::CaseInsensitive)) {
+        return {};
+    }
+
+    const QString fileName = QFileInfo(normalized.mid(QStringLiteral("chat_images/").size())).fileName();
+    if (fileName.isEmpty()) {
+        return {};
+    }
+
+    QDir dir(imageCacheDirectory());
+    if (!dir.exists()) {
+        dir.mkpath(QStringLiteral("."));
+    }
+    return dir.filePath(fileName);
+}
+
+void ChatPage::ensureImageAvailable(MessageItem &item)
+{
+    if (item.type != ChatMessageType::Image || item.text.isEmpty()) {
+        return;
+    }
+
+    const QString localPath = localImageCachePath(item.text);
+    if (!localPath.isEmpty()) {
+        const QImage localImage(localPath);
+        if (!localImage.isNull()) {
+            item.image = localImage;
+            return;
+        }
+    }
+
+    const QString resourceKey = normalizeImageResourceKey(item.text);
+    if (!resourceKey.startsWith(QStringLiteral("chat_images/"), Qt::CaseInsensitive)) {
+        return;
+    }
+
+    requestImageDownload(resourceKey);
+}
+
+void ChatPage::cachePendingImage(const QString &clientMsgId, const QString &resourceKey)
+{
+    if (clientMsgId.isEmpty() || resourceKey.isEmpty()) {
+        return;
+    }
+
+    const QString cachePath = localImageCachePath(resourceKey);
+    if (cachePath.isEmpty()) {
+        return;
+    }
+
+    for (const Conversation &conversation : std::as_const(_conversations)) {
+        for (const MessageItem &message : conversation.messages) {
+            if (message.clientMsgId != clientMsgId || message.type != ChatMessageType::Image || message.image.isNull()) {
+                continue;
+            }
+
+            QDir cacheDir(QFileInfo(cachePath).absolutePath());
+            if (!cacheDir.exists()) {
+                cacheDir.mkpath(QStringLiteral("."));
+            }
+            message.image.save(cachePath, "PNG");
+            return;
+        }
+    }
+}
+
+void ChatPage::requestImageDownload(const QString &resourceKey)
+{
+    const QString normalized = normalizeImageResourceKey(resourceKey);
+    if (!normalized.startsWith(QStringLiteral("chat_images/"), Qt::CaseInsensitive)) {
+        return;
+    }
+
+    const QString cachePath = localImageCachePath(normalized);
+    if (!cachePath.isEmpty() && QFileInfo::exists(cachePath)) {
+        return;
+    }
+    if (_downloadingImageResources.contains(normalized)) {
+        return;
+    }
+
+    _downloadingImageResources.insert(normalized);
+    QUrl url(gate_url_prefix + "/download_image");
+    QUrlQuery query;
+    query.addQueryItem(QStringLiteral("path"), normalized);
+    url.setQuery(query);
+
+    QNetworkRequest request(url);
+    QNetworkReply *reply = _imageDownloadManager->get(request);
+    reply->setProperty("resource_key", normalized);
+}
+
+void ChatPage::onImageDownloadFinished(QNetworkReply *reply)
+{
+    const QString resourceKey = reply->property("resource_key").toString();
+    _downloadingImageResources.remove(resourceKey);
+
+    if (reply->error() != QNetworkReply::NoError) {
+        reply->deleteLater();
+        return;
+    }
+
+    const QByteArray bytes = reply->readAll();
+    reply->deleteLater();
+    if (bytes.isEmpty()) {
+        return;
+    }
+
+    const QString cachePath = localImageCachePath(resourceKey);
+    if (cachePath.isEmpty()) {
+        return;
+    }
+
+    QDir cacheDir(QFileInfo(cachePath).absolutePath());
+    if (!cacheDir.exists() && !cacheDir.mkpath(QStringLiteral("."))) {
+        return;
+    }
+
+    QFile output(cachePath);
+    if (!output.open(QIODevice::WriteOnly)) {
+        return;
+    }
+    output.write(bytes);
+    output.close();
+
+    refreshImageResource(resourceKey);
+}
+
+void ChatPage::refreshImageResource(const QString &resourceKey)
+{
+    const QString normalized = normalizeImageResourceKey(resourceKey);
+    bool changed = false;
+    for (Conversation &conversation : _conversations) {
+        for (MessageItem &message : conversation.messages) {
+            if (message.type != ChatMessageType::Image) {
+                continue;
+            }
+            if (normalizeImageResourceKey(message.text) != normalized) {
+                continue;
+            }
+
+            const QString cachePath = localImageCachePath(normalized);
+            if (cachePath.isEmpty()) {
+                continue;
+            }
+            const QImage image(cachePath);
+            if (image.isNull()) {
+                continue;
+            }
+            message.image = image;
+            changed = true;
+        }
+    }
+
+    if (changed && _currentConversation >= 0 && _currentConversation < _conversations.size()) {
+        bindConversation(_currentConversation);
+    }
 }

@@ -24,7 +24,9 @@ class MessageListWidget;
 class SearchPopupWidget;
 class QLineEdit;
 class QLabel;
+class QNetworkAccessManager;
 class QPushButton;
+class QNetworkReply;
 class QScrollArea;
 class QVBoxLayout;
 class QWidget;
@@ -130,6 +132,14 @@ private:
     bool retryMessageByClientId(const QString &clientMsgId);
     void markAllSendingMessagesFailed();
     QString normalizeContactPreview(const QString &text) const;
+    QString normalizeImageResourceKey(const QString &text) const;
+    QString imageCacheDirectory() const;
+    QString localImageCachePath(const QString &resourceKey) const;
+    void ensureImageAvailable(MessageItem &item);
+    void cachePendingImage(const QString &clientMsgId, const QString &resourceKey);
+    void requestImageDownload(const QString &resourceKey);
+    void onImageDownloadFinished(QNetworkReply *reply);
+    void refreshImageResource(const QString &resourceKey);
 
     Ui::ChatPage *ui;
     ContactListWidget *_contactListWidget;
@@ -149,8 +159,10 @@ private:
     QString _pendingAddFriendRemark;
     QLabel *_friendRequestBadgeLabel = nullptr;
     QLabel *_chatBadgeLabel = nullptr;
+    QNetworkAccessManager *_imageDownloadManager = nullptr;
     bool _hasUnreadFriendRequestNotification = false;
     bool _hasUnreadChatNotification = false;
+    QSet<QString> _downloadingImageResources;
     int _currentUserId = 0;
     QString _currentUserName;
     int _currentConversation = 0;
