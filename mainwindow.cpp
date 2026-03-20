@@ -63,14 +63,14 @@ MainWindow::MainWindow(QWidget *parent)
         _stackedWidget->setCurrentWidget(_chatPage);
     });
 
-    connect(&TcpMgr::getInstance(), &TcpMgr::sig_server_closed, this, [this]() {
-        QMessageBox::warning(this, "连接断开", "聊天服务器已关闭或连接已断开，请重新登录。", QMessageBox::Ok);
-        _friendRequestFlashActive = false;
-        _chatMessageFlashActive = false;
-        updateTaskbarFlashState();
-        setWindowTitle("Chat Client");
-        _stackedWidget->setCurrentWidget(_loginDialog);
-    });
+    // connect(&TcpMgr::getInstance(), &TcpMgr::sig_server_closed, this, [this]() {
+    //     QMessageBox::warning(this, "连接断开", "聊天服务器已关闭或连接已断开，请重新登录。", QMessageBox::Ok);
+    //     _friendRequestFlashActive = false;
+    //     _chatMessageFlashActive = false;
+    //     updateTaskbarFlashState();
+    //     setWindowTitle("Chat Client");
+    //     _stackedWidget->setCurrentWidget(_loginDialog);
+    // });
 
     connect(_chatPage, &ChatPage::friendRequestNotificationChanged, this, [this](bool hasUnread) {
         _friendRequestFlashActive = hasUnread;

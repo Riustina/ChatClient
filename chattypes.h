@@ -11,6 +11,12 @@ enum class ChatMessageType {
     Image
 };
 
+enum class MessageSendState {
+    Sent,
+    Sending,
+    Failed
+};
+
 enum class FriendRequestDirection {
     Outgoing,
     Incoming
@@ -33,9 +39,11 @@ struct ContactItem {
 
 struct MessageItem {
     int id = 0;
+    QString clientMsgId;
     QString senderName;
     bool outgoing = false;
     ChatMessageType type = ChatMessageType::Text;
+    MessageSendState sendState = MessageSendState::Sent;
     QString text;
     QImage image;
     QColor avatarColor;

@@ -172,6 +172,7 @@ void ChatPage::onSendClicked()
         return;
     }
 
+    const int contactId = _conversations[_currentConversation].contact.id;
     const QImage pastedImage = _chatInputEdit->takePastedImage();
     const QString text = _chatInputEdit->plainTextForSend().trimmed();
     if (text.isEmpty() && pastedImage.isNull()) {
@@ -179,8 +180,11 @@ void ChatPage::onSendClicked()
     }
 
     if (!pastedImage.isNull()) {
+        MessageItem message = createOutgoingImageMessage(pastedImage);
+        appendPendingOutgoingMessage(contactId, message);
         const QByteArray encodedImage = encodeImageForUpload(pastedImage);
         if (encodedImage.isEmpty()) {
+            updatePendingMessageState(message.clientMsgId, MessageSendState::Failed);
             QMessageBox::warning(this,
                                  QStringLiteral("发送失败"),
                                  QStringLiteral("图片过大，请尝试更小的图片。"));
@@ -188,7 +192,10 @@ void ChatPage::onSendClicked()
         }
 
         const QString uploadId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        _pendingImageUploadTargets.insert(uploadId, _conversations[_currentConversation].contact.id);
+        PendingImageUpload pendingUpload;
+        pendingUpload.contactId = contactId;
+        pendingUpload.clientMsgId = message.clientMsgId;
+        _pendingImageUploadTargets.insert(uploadId, pendingUpload);
         QJsonObject imageObj;
         imageObj["upload_id"] = uploadId;
         imageObj["content_encoding"] = "zlib+png";
@@ -200,10 +207,13 @@ void ChatPage::onSendClicked()
             Modules::CHATMOD);
     }
     if (!text.isEmpty()) {
+        MessageItem message = createOutgoingTextMessage(text);
+        appendPendingOutgoingMessage(contactId, message);
         QJsonObject obj;
-        obj["to_uid"] = _conversations[_currentConversation].contact.id;
+        obj["to_uid"] = contactId;
         obj["content_type"] = "text";
         obj["content"] = text;
+        obj["client_msg_id"] = message.clientMsgId;
         emit TcpMgr::getInstance().sig_send_data(ID_SEND_PRIVATE_MESSAGE_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
     }
 
@@ -394,7 +404,9 @@ void ChatPage::setupUiExtensions()
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_private_messages_rsp, this, &ChatPage::onPrivateMessagesRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_send_private_message_rsp, this, &ChatPage::onSendPrivateMessageRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_private_message_push, this, &ChatPage::onPrivateMessagePush);
+    connect(&TcpMgr::getInstance(), &TcpMgr::sig_server_closed, this, &ChatPage::onServerClosed);
     connect(&HttpMgr::getInstance(), &HttpMgr::sig_chat_mod_http_finished, this, &ChatPage::onChatHttpFinished);
+    connect(_messageListWidget, &MessageListWidget::retryRequested, this, &ChatPage::onRetryMessageRequested);
 }
 
 void ChatPage::setupFriendRequestPage()
@@ -531,7 +543,7 @@ void ChatPage::refreshContactSummaries()
         }
 
         const MessageItem &last = conversation.messages.back();
-        conversation.contact.lastMessage = formatMessagePreview(last);
+        conversation.contact.lastMessage = normalizeContactPreview(formatMessagePreview(last));
         conversation.contact.timeText = formatMessageTime(last.timestamp);
     }
 }
@@ -577,10 +589,12 @@ QDateTime ChatPage::latestTimestamp(const Conversation &conversation) const
 MessageItem ChatPage::createOutgoingTextMessage(const QString &text)
 {
     MessageItem message;
-    message.id = ++_messageIdSeed;
+    message.id = -++_messageIdSeed;
+    message.clientMsgId = createClientMessageId();
     message.senderName = _currentUserName.isEmpty() ? QStringLiteral("我") : _currentUserName;
     message.outgoing = true;
     message.type = ChatMessageType::Text;
+    message.sendState = MessageSendState::Sending;
     message.text = text;
     message.avatarColor = QColor("#111827");
     message.timestamp = QDateTime::currentDateTime();
@@ -590,10 +604,12 @@ MessageItem ChatPage::createOutgoingTextMessage(const QString &text)
 MessageItem ChatPage::createOutgoingImageMessage(const QImage &image)
 {
     MessageItem message;
-    message.id = ++_messageIdSeed;
+    message.id = -++_messageIdSeed;
+    message.clientMsgId = createClientMessageId();
     message.senderName = _currentUserName.isEmpty() ? QStringLiteral("我") : _currentUserName;
     message.outgoing = true;
     message.type = ChatMessageType::Image;
+    message.sendState = MessageSendState::Sending;
     message.image = image;
     message.avatarColor = QColor("#111827");
     message.timestamp = QDateTime::currentDateTime();
@@ -828,7 +844,7 @@ void ChatPage::applyFriendList(const QJsonArray &friends)
         Conversation conversation = existingById.value(uid);
         conversation.contact.id = uid;
         conversation.contact.name = obj.value("name").toString();
-        conversation.contact.lastMessage = obj.value("last_message").toString();
+        conversation.contact.lastMessage = normalizeContactPreview(obj.value("last_message").toString());
         conversation.contact.timeText = obj.value("last_time").toString();
         conversation.contact.unreadCount = obj.value("unread_count").toInt();
         conversation.contact.avatarColor = avatarColorForName(
@@ -1272,6 +1288,7 @@ void ChatPage::onPrivateMessagesRsp(const QJsonObject &payload)
 
 void ChatPage::onSendPrivateMessageRsp(const QJsonObject &payload)
 {
+    const QString clientMsgId = payload.value("client_msg_id").toString();
     if (payload.value("error").toInt() != 0) {
         const QString message = payload.value("message").toString().trimmed();
         QMessageBox::warning(this,
@@ -1280,7 +1297,11 @@ void ChatPage::onSendPrivateMessageRsp(const QJsonObject &payload)
         return;
     }
 
-    appendPrivateMessage(payload.value("message").toObject(), true);
+    const QJsonObject serverMessage = payload.value("message").toObject();
+    if (!clientMsgId.isEmpty() && updatePendingMessageState(clientMsgId, MessageSendState::Sent, &serverMessage)) {
+        return;
+    }
+    appendPrivateMessage(serverMessage, true);
 }
 
 void ChatPage::onPrivateMessagePush(const QJsonObject &payload)
@@ -1298,6 +1319,16 @@ void ChatPage::onChatHttpFinished(ReqId id, QString res, ErrorCodes err)
         return;
     }
 
+    auto failUpload = [this](const QString &uploadId) {
+        if (uploadId.isEmpty() || !_pendingImageUploadTargets.contains(uploadId)) {
+            return;
+        }
+        const PendingImageUpload pending = _pendingImageUploadTargets.take(uploadId);
+        if (!pending.clientMsgId.isEmpty()) {
+            updatePendingMessageState(pending.clientMsgId, MessageSendState::Failed);
+        }
+    };
+
     if (err != ErrorCodes::SUCCESS) {
         QMessageBox::warning(this, QStringLiteral("上传失败"), QStringLiteral("图片上传失败，请稍后再试。"));
         return;
@@ -1310,25 +1341,26 @@ void ChatPage::onChatHttpFinished(ReqId id, QString res, ErrorCodes err)
     }
 
     const QJsonObject obj = doc.object();
+    const QString uploadId = obj.value("upload_id").toString();
     if (obj.value("error").toInt() != ErrorCodes::SUCCESS) {
+        failUpload(uploadId);
         QMessageBox::warning(this,
                              QStringLiteral("上传失败"),
                              obj.value("message").toString(QStringLiteral("图片上传失败，请稍后再试。")));
         return;
     }
-
-    const QString uploadId = obj.value("upload_id").toString();
     const QString path = obj.value("path").toString();
     if (uploadId.isEmpty() || path.isEmpty() || !_pendingImageUploadTargets.contains(uploadId)) {
         QMessageBox::warning(this, QStringLiteral("上传失败"), QStringLiteral("图片上传结果无效。"));
         return;
     }
 
-    const int toUid = _pendingImageUploadTargets.take(uploadId);
+    const PendingImageUpload pending = _pendingImageUploadTargets.take(uploadId);
     QJsonObject sendObj;
-    sendObj["to_uid"] = toUid;
+    sendObj["to_uid"] = pending.contactId;
     sendObj["content_type"] = "image";
     sendObj["content"] = path;
+    sendObj["client_msg_id"] = pending.clientMsgId;
     emit TcpMgr::getInstance().sig_send_data(
         ID_SEND_PRIVATE_MESSAGE_REQ,
         QString::fromUtf8(QJsonDocument(sendObj).toJson(QJsonDocument::Compact)));
@@ -1469,4 +1501,178 @@ void ChatPage::updateChatUnreadNotification()
         emit chatMessageNotificationChanged(hasUnread);
     }
     updateChatBadge();
+}
+
+void ChatPage::appendPendingOutgoingMessage(int contactId, const MessageItem &message)
+{
+    int index = conversationIndexById(contactId);
+    if (index < 0) {
+        return;
+    }
+
+    _conversations[index].messages.push_back(message);
+    hydrateConversationMessages(_conversations[index]);
+    refreshContactSummaries();
+    index = moveConversationToFront(index);
+    _currentConversation = index;
+    syncContactList();
+    bindConversation(index);
+}
+
+bool ChatPage::updatePendingMessageState(const QString &clientMsgId, MessageSendState state, const QJsonObject *serverMessage)
+{
+    if (clientMsgId.isEmpty()) {
+        return false;
+    }
+
+    for (int i = 0; i < _conversations.size(); ++i) {
+        for (MessageItem &message : _conversations[i].messages) {
+            if (message.clientMsgId != clientMsgId) {
+                continue;
+            }
+
+            message.sendState = state;
+            if (serverMessage != nullptr) {
+                MessageItem confirmed = messageFromJson(*serverMessage);
+                confirmed.clientMsgId = clientMsgId;
+                confirmed.sendState = MessageSendState::Sent;
+                if (message.type == ChatMessageType::Image && confirmed.image.isNull()) {
+                    confirmed.image = message.image;
+                }
+                message = confirmed;
+                LocalDb::instance().upsertMessage(_conversations[i].contact.id, message, _currentUserId);
+            }
+
+            refreshContactSummaries();
+            syncContactList();
+            if (_currentConversation == i) {
+                bindConversation(i);
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool ChatPage::retryMessageByClientId(const QString &clientMsgId)
+{
+    if (clientMsgId.isEmpty()) {
+        return false;
+    }
+
+    for (int i = 0; i < _conversations.size(); ++i) {
+        for (MessageItem &message : _conversations[i].messages) {
+            if (message.clientMsgId != clientMsgId || !message.outgoing || message.sendState != MessageSendState::Failed) {
+                continue;
+            }
+
+            const QString newClientMsgId = createClientMessageId();
+            message.clientMsgId = newClientMsgId;
+            message.sendState = MessageSendState::Sending;
+            message.timestamp = QDateTime::currentDateTime();
+
+            const int contactId = _conversations[i].contact.id;
+            if (message.type == ChatMessageType::Image) {
+                if (!message.text.isEmpty()) {
+                    QJsonObject sendObj;
+                    sendObj["to_uid"] = contactId;
+                    sendObj["content_type"] = "image";
+                    sendObj["content"] = message.text;
+                    sendObj["client_msg_id"] = message.clientMsgId;
+                    emit TcpMgr::getInstance().sig_send_data(
+                        ID_SEND_PRIVATE_MESSAGE_REQ,
+                        QString::fromUtf8(QJsonDocument(sendObj).toJson(QJsonDocument::Compact)));
+                } else {
+                    const QByteArray encodedImage = encodeImageForUpload(message.image);
+                    if (encodedImage.isEmpty()) {
+                        message.sendState = MessageSendState::Failed;
+                        return false;
+                    }
+                    const QString uploadId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+                    PendingImageUpload pendingUpload;
+                    pendingUpload.contactId = contactId;
+                    pendingUpload.clientMsgId = message.clientMsgId;
+                    _pendingImageUploadTargets.insert(uploadId, pendingUpload);
+
+                    QJsonObject imageObj;
+                    imageObj["upload_id"] = uploadId;
+                    imageObj["content_encoding"] = "zlib+png";
+                    imageObj["content"] = QString::fromLatin1(encodedImage);
+                    HttpMgr::getInstance().PostHttpReq(
+                        QUrl(gate_url_prefix + "/upload_image"),
+                        imageObj,
+                        ReqId::ID_UPLOAD_IMAGE,
+                        Modules::CHATMOD);
+                }
+            } else {
+                QJsonObject obj;
+                obj["to_uid"] = contactId;
+                obj["content_type"] = "text";
+                obj["content"] = message.text;
+                obj["client_msg_id"] = message.clientMsgId;
+                emit TcpMgr::getInstance().sig_send_data(
+                    ID_SEND_PRIVATE_MESSAGE_REQ,
+                    QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+            }
+
+            if (_currentConversation == i) {
+                bindConversation(i);
+            } else {
+                syncContactList();
+            }
+            return true;
+        }
+    }
+
+    return false;
+}
+
+void ChatPage::onRetryMessageRequested(const QString &clientMsgId)
+{
+    retryMessageByClientId(clientMsgId);
+}
+
+void ChatPage::markAllSendingMessagesFailed()
+{
+    bool changed = false;
+    for (Conversation &conversation : _conversations) {
+        for (MessageItem &message : conversation.messages) {
+            if (message.outgoing && message.sendState == MessageSendState::Sending) {
+                message.sendState = MessageSendState::Failed;
+                changed = true;
+            }
+        }
+    }
+
+    if (changed) {
+        refreshContactSummaries();
+        syncContactList();
+        if (_currentConversation >= 0 && _currentConversation < _conversations.size()) {
+            bindConversation(_currentConversation);
+        }
+    }
+}
+
+void ChatPage::onServerClosed()
+{
+    markAllSendingMessagesFailed();
+}
+
+QString ChatPage::createClientMessageId() const
+{
+    return QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
+QString ChatPage::normalizeContactPreview(const QString &text) const
+{
+    const QString trimmed = text.trimmed();
+    const QString lower = trimmed.toLower();
+    if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+        || lower.endsWith(".bmp") || lower.endsWith(".webp") || lower.endsWith(".gif")
+        || lower.contains("/uploads/chat_images/") || lower.contains("\\uploads\\chat_images\\")
+        || trimmed.contains(QStringLiteral("鍥剧墖"))) {
+        return QStringLiteral("[图片]");
+    }
+    return trimmed;
 }

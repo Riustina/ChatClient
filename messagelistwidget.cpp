@@ -57,6 +57,7 @@ void MessageListWidget::rebuildPool()
     while (_cellPool.size() < visibleCount) {
         auto *cell = new MessageCell(_contentWidget);
         cell->hide();
+        connect(cell, &MessageCell::retryRequested, this, &MessageListWidget::retryRequested);
         _cellPool.push_back(cell);
     }
 }

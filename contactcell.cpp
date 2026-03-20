@@ -32,6 +32,24 @@ QPixmap buildAvatarPixmap(const QString &name, const QColor &color, const QSize 
     painter.drawText(QRectF(0, 0, size.width(), size.height()), Qt::AlignCenter, name.left(1).toUpper());
     return pixmap;
 }
+
+QString normalizePreviewText(const QString &text)
+{
+    const QString trimmed = text.trimmed();
+    if (trimmed.isEmpty()) {
+        return trimmed;
+    }
+
+    const QString lower = trimmed.toLower();
+    if (lower.endsWith(".png") || lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+        || lower.endsWith(".bmp") || lower.endsWith(".webp") || lower.endsWith(".gif")
+        || lower.contains("/uploads/chat_images/") || lower.contains("\\uploads\\chat_images\\")
+        || trimmed.contains(QStringLiteral("图片"))) {
+        return QStringLiteral("[图片]");
+    }
+
+    return trimmed;
+}
 }
 
 ContactCell::ContactCell(QWidget *parent)
@@ -91,7 +109,7 @@ ContactCell::ContactCell(QWidget *parent)
 void ContactCell::setContact(const ContactItem &contact)
 {
     _nameLabel->setText(contact.name);
-    _lastMessageText = contact.lastMessage;
+    _lastMessageText = normalizePreviewText(contact.lastMessage);
     _timeLabel->setText(contact.timeText);
     updateAvatar(contact);
     updateMessageText();

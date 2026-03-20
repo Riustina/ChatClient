@@ -425,6 +425,7 @@ MessageCell::MessageCell(QWidget *parent)
     , _bubbleWidget(new QWidget(this))
     , _textBrowser(new QTextBrowser(_bubbleWidget))
     , _imageLabel(new QLabel(_bubbleWidget))
+    , _statusButton(new QPushButton(this))
 {
     _avatarLabel->setFixedSize(kAvatarSize, kAvatarSize);
 
@@ -448,6 +449,15 @@ MessageCell::MessageCell(QWidget *parent)
     _imageLabel->setScaledContents(false);
     _imageLabel->installEventFilter(this);
     _imageLabel->hide();
+
+    _statusButton->hide();
+    _statusButton->setFlat(true);
+    _statusButton->setCursor(Qt::PointingHandCursor);
+    connect(_statusButton, &QPushButton::clicked, this, [this]() {
+        if (!_currentClientMsgId.isEmpty()) {
+            emit retryRequested(_currentClientMsgId);
+        }
+    });
 }
 
 MessageCell::~MessageCell() = default;
@@ -467,6 +477,7 @@ void MessageCell::setMessage(const MessageItem &message, int availableWidth)
 {
     updateAvatar(message);
     _currentImage = message.image;
+    _currentClientMsgId = message.clientMsgId;
 
     const int maxBubbleWidth = qMin(kBubbleMaxWidth,
                                     qMax(80, availableWidth - 2 * (kSideMargin + kAvatarSize + 20)));
@@ -499,12 +510,22 @@ void MessageCell::setMessage(const MessageItem &message, int availableWidth)
 
     _bubbleWidget->resize(bubbleWidth, contentHeight);
 
+    int bubbleX = 0;
     if (message.outgoing)
+    {
+        bubbleX = width() - kSideMargin - kAvatarSize - 12 - bubbleWidth;
         layoutOutgoing(bubbleWidth, contentHeight);
+    }
     else
+    {
+        bubbleX = kSideMargin + kAvatarSize + 12;
         layoutIncoming(bubbleWidth, contentHeight);
+    }
 
-    setFixedHeight(qMax(contentHeight, kAvatarSize) + 18);
+    updateStatusWidget(message, bubbleX, bubbleWidth, contentHeight);
+
+    const int extraHeight = (message.outgoing && message.sendState != MessageSendState::Sent) ? 18 : 0;
+    setFixedHeight(qMax(contentHeight + extraHeight, kAvatarSize) + 18);
 }
 
 int MessageCell::heightForMessage(const MessageItem &message, int availableWidth)
@@ -513,10 +534,12 @@ int MessageCell::heightForMessage(const MessageItem &message, int availableWidth
                                  qMax(80, availableWidth - 2 * (kSideMargin + kAvatarSize + 20)));
     if (message.type == ChatMessageType::Text) {
         const QSize textSize = textLayoutSize(message.text, bubbleWidth);
-        return qMax(textSize.height() + 2 * kBubblePaddingV, kAvatarSize) + 18;
+        const int extraHeight = (message.outgoing && message.sendState != MessageSendState::Sent) ? 18 : 0;
+        return qMax(textSize.height() + 2 * kBubblePaddingV + extraHeight, kAvatarSize) + 18;
     }
     const QSize sourceSize = message.image.isNull() ? QSize(200, 140) : message.image.size();
-    return qMax(sourceSize.scaled(kImagePreviewMaxWidth, kImagePreviewMaxHeight, Qt::KeepAspectRatio).height(), kAvatarSize) + 18;
+    const int extraHeight = (message.outgoing && message.sendState != MessageSendState::Sent) ? 18 : 0;
+    return qMax(sourceSize.scaled(kImagePreviewMaxWidth, kImagePreviewMaxHeight, Qt::KeepAspectRatio).height() + extraHeight, kAvatarSize) + 18;
 }
 
 void MessageCell::updateAvatar(const MessageItem &message)
@@ -557,5 +580,33 @@ void MessageCell::showImagePreview() const
     }
 
     auto *dialog = new ImagePreviewDialog(_currentImage, window());
-    dialog->showFullScreen();
+    dialog->show();
+}
+
+void MessageCell::updateStatusWidget(const MessageItem &message, int bubbleX, int bubbleWidth, int contentHeight)
+{
+    if (!message.outgoing || message.sendState == MessageSendState::Sent) {
+        _statusButton->hide();
+        return;
+    }
+
+    const int y = 8 + contentHeight + 2;
+    if (message.sendState == MessageSendState::Sending) {
+        _statusButton->setText(QStringLiteral("发送中"));
+        _statusButton->setEnabled(false);
+        _statusButton->setCursor(Qt::ArrowCursor);
+        _statusButton->setStyleSheet(
+            "QPushButton { background:transparent; border:none; padding:0px; font: 8pt 'Microsoft YaHei UI'; color:#94a3b8; }");
+    } else {
+        _statusButton->setText(QStringLiteral("发送失败，点击重试"));
+        _statusButton->setEnabled(true);
+        _statusButton->setCursor(Qt::PointingHandCursor);
+        _statusButton->setStyleSheet(
+            "QPushButton { background:transparent; border:none; padding:0px; font: 8pt 'Microsoft YaHei UI'; color:#ef4444; }"
+            "QPushButton:hover { color:#dc2626; text-decoration:underline; }");
+    }
+    _statusButton->adjustSize();
+    _statusButton->move(bubbleX + bubbleWidth - _statusButton->width(), y);
+    _statusButton->show();
+    _statusButton->raise();
 }

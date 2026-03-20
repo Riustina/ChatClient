@@ -18,6 +18,9 @@ public:
     void setMessages(const QVector<MessageItem> &messages);
     void appendMessage(const MessageItem &message);
 
+signals:
+    void retryRequested(const QString &clientMsgId);
+
 protected:
     void resizeEvent(QResizeEvent *event) override;
 

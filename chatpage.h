@@ -65,11 +65,18 @@ private slots:
     void onSendPrivateMessageRsp(const QJsonObject &payload);
     void onPrivateMessagePush(const QJsonObject &payload);
     void onChatHttpFinished(ReqId id, QString res, ErrorCodes err);
+    void onRetryMessageRequested(const QString &clientMsgId);
+    void onServerClosed();
 
 private:
     struct Conversation {
         ContactItem contact;
         QVector<MessageItem> messages;
+    };
+
+    struct PendingImageUpload {
+        int contactId = 0;
+        QString clientMsgId;
     };
 
     void setupUiExtensions();
@@ -117,6 +124,12 @@ private:
     void updateFriendRequestBadge();
     void updateChatBadge();
     void updateChatUnreadNotification();
+    QString createClientMessageId() const;
+    void appendPendingOutgoingMessage(int contactId, const MessageItem &message);
+    bool updatePendingMessageState(const QString &clientMsgId, MessageSendState state, const QJsonObject *serverMessage = nullptr);
+    bool retryMessageByClientId(const QString &clientMsgId);
+    void markAllSendingMessagesFailed();
+    QString normalizeContactPreview(const QString &text) const;
 
     Ui::ChatPage *ui;
     ContactListWidget *_contactListWidget;
@@ -130,7 +143,7 @@ private:
     QVector<Conversation> _conversations;
     QVector<FriendRequestItem> _friendRequests;
     QVector<ContactItem> _searchResults;
-    QHash<QString, int> _pendingImageUploadTargets;
+    QHash<QString, PendingImageUpload> _pendingImageUploadTargets;
     QSet<int> _knownPendingIncomingRequestIds;
     ContactItem _pendingAddFriendTarget;
     QString _pendingAddFriendRemark;
