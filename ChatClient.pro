@@ -18,6 +18,7 @@ SOURCES += \
     searchpopupwidget.cpp \
     global.cpp \
     httpmgr.cpp \
+    imageuploadworker.cpp \
     localdb.cpp \
     logindialog.cpp \
     main.cpp \
@@ -41,6 +42,7 @@ HEADERS += \
     searchpopupwidget.h \
     global.h \
     httpmgr.h \
+    imageuploadworker.h \
     localdb.h \
     logindialog.h \
     mainwindow.h \

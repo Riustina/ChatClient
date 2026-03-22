@@ -6,6 +6,7 @@
 #include "contactlistwidget.h"
 #include "friendrequestitemwidget.h"
 #include "httpmgr.h"
+#include "imageuploadworker.h"
 #include "localdb.h"
 #include "messagelistwidget.h"
 #include "searchpopupwidget.h"
@@ -20,6 +21,8 @@
 #include <QFocusEvent>
 #include <QFile>
 #include <QFileInfo>
+#include <QFutureWatcher>
+#include <QThread>
 #include <QLineEdit>
 #include <QLabel>
 #include <QLinearGradient>
@@ -38,7 +41,6 @@
 #include <QScrollArea>
 #include <QStandardPaths>
 #include <QTimer>
-#include <QFutureWatcher>
 #include <QUuid>
 #include <QUrlQuery>
 #include <QVBoxLayout>
@@ -82,11 +84,24 @@ ChatPage::ChatPage(QWidget *parent)
     refreshContactSummaries();
     syncContactList();
     applyEmptyConversationState();
+
+    _imageUploadThread = new QThread(this);
+    _imageUploadWorker = new ImageUploadWorker();
+    _imageUploadWorker->moveToThread(_imageUploadThread);
+    connect(_imageUploadThread, &QThread::finished, _imageUploadWorker, &QObject::deleteLater);
+    connect(this, &ChatPage::sigStartImageUpload, _imageUploadWorker, &ImageUploadWorker::uploadImage, Qt::QueuedConnection);
+    connect(_imageUploadWorker, &ImageUploadWorker::uploadSucceeded, this, &ChatPage::onImageUploadSucceeded);
+    connect(_imageUploadWorker, &ImageUploadWorker::uploadFailed, this, &ChatPage::onImageUploadFailed);
+    _imageUploadThread->start();
 }
 
 ChatPage::~ChatPage()
 {
     qApp->removeEventFilter(this);
+    if (_imageUploadThread != nullptr) {
+        _imageUploadThread->quit();
+        _imageUploadThread->wait();
+    }
     delete ui;
 }
 
@@ -424,7 +439,6 @@ void ChatPage::setupUiExtensions()
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_send_private_message_rsp, this, &ChatPage::onSendPrivateMessageRsp);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_private_message_push, this, &ChatPage::onPrivateMessagePush);
     connect(&TcpMgr::getInstance(), &TcpMgr::sig_server_closed, this, &ChatPage::onServerClosed);
-    connect(&HttpMgr::getInstance(), &HttpMgr::sig_chat_mod_http_finished, this, &ChatPage::onChatHttpFinished);
     connect(_messageListWidget, &MessageListWidget::retryRequested, this, &ChatPage::onRetryMessageRequested);
     connect(ui->headerActionButton1, &QToolButton::clicked, this, [this]() {
         QMessageBox::information(this, QStringLiteral("提示"), QStringLiteral("还没开发呢"));
@@ -660,118 +674,19 @@ MessageItem ChatPage::createOutgoingImageMessage(const QImage &image)
     return message;
 }
 
-ChatPage::EncodedImageUploadPayload ChatPage::encodeImageForUpload(const QImage &image, const QString &uploadId) const
-{
-    EncodedImageUploadPayload payload;
-    if (image.isNull()) {
-        payload.errorMessage = QStringLiteral("图片数据无效。");
-        return payload;
-    }
-
-    // GateServer 目前已经放宽到 32MB，这里给 JSON 和其它字段留出余量，
-    // 客户端本地编码后上限放宽到 30MB，避免在上传前过早失败。
-    constexpr int kMaxEncodedBytes = 30 * 1024 * 1024;
-    const QImage normalized = image.convertToFormat(QImage::Format_RGBA8888);
-    auto encodePngPayload = [&normalized]() -> QByteArray {
-        QByteArray pngBytes;
-        QBuffer pngBuffer(&pngBytes);
-        pngBuffer.open(QIODevice::WriteOnly);
-        if (!normalized.save(&pngBuffer, "PNG")) {
-            return {};
-        }
-        return qCompress(pngBytes, 9).toBase64();
-    };
-
-    const QByteArray pngPayload = encodePngPayload();
-    if (!pngPayload.isEmpty() && pngPayload.size() <= kMaxEncodedBytes) {
-        QJsonObject imageObj;
-        imageObj["upload_id"] = uploadId;
-        imageObj["content_encoding"] = QStringLiteral("zlib+png");
-        imageObj["content"] = QString::fromLatin1(pngPayload);
-        payload.requestBody = QJsonDocument(imageObj).toJson(QJsonDocument::Compact);
-        payload.uploadId = uploadId;
-        payload.success = true;
-        return payload;
-    }
-
-    QImage jpegSource = normalized;
-    if (jpegSource.hasAlphaChannel()) {
-        QImage flattened(jpegSource.size(), QImage::Format_RGB888);
-        flattened.fill(Qt::white);
-        QPainter painter(&flattened);
-        painter.drawImage(QPoint(0, 0), jpegSource);
-        painter.end();
-        jpegSource = flattened;
-    } else {
-        jpegSource = jpegSource.convertToFormat(QImage::Format_RGB888);
-    }
-
-    const QList<int> jpegQualities = { 92, 85, 78, 70, 62, 54, 46, 38, 30 };
-    for (int quality : jpegQualities) {
-        QByteArray jpegBytes;
-        QBuffer jpegBuffer(&jpegBytes);
-        jpegBuffer.open(QIODevice::WriteOnly);
-        if (!jpegSource.save(&jpegBuffer, "JPEG", quality)) {
-            continue;
-        }
-
-        const QByteArray encoded = jpegBytes.toBase64();
-        if (encoded.size() <= kMaxEncodedBytes) {
-            QJsonObject imageObj;
-            imageObj["upload_id"] = uploadId;
-            imageObj["content_encoding"] = QStringLiteral("jpeg");
-            imageObj["content"] = QString::fromLatin1(encoded);
-            payload.requestBody = QJsonDocument(imageObj).toJson(QJsonDocument::Compact);
-            payload.uploadId = uploadId;
-            payload.success = true;
-            return payload;
-        }
-    }
-
-    payload.errorMessage = QStringLiteral("图片过大，请尝试更小的图片。");
-    return payload;
-}
-
 void ChatPage::startImageUpload(int contactId, const QString &clientMsgId, const QImage &image)
 {
-    if (clientMsgId.isEmpty()) {
+    if (clientMsgId.isEmpty() || image.isNull() || _imageUploadWorker == nullptr) {
+        updatePendingMessageState(clientMsgId, MessageSendState::Failed);
         return;
     }
 
-    auto *watcher = new QFutureWatcher<EncodedImageUploadPayload>(this);
-    connect(watcher, &QFutureWatcher<EncodedImageUploadPayload>::finished, this, [this, watcher, contactId, clientMsgId]() {
-        const EncodedImageUploadPayload payload = watcher->result();
-        watcher->deleteLater();
-
-        if (!payload.success || payload.requestBody.isEmpty() || payload.uploadId.isEmpty()) {
-            updatePendingMessageState(clientMsgId, MessageSendState::Failed);
-            QMessageBox::warning(this,
-                                 QStringLiteral("发送失败"),
-                                 payload.errorMessage.isEmpty()
-                                     ? QStringLiteral("图片过大，请尝试更小的图片。")
-                                     : payload.errorMessage);
-            return;
-        }
-
-        PendingImageUpload pendingUpload;
-        pendingUpload.contactId = contactId;
-        pendingUpload.clientMsgId = clientMsgId;
-        _pendingImageUploadTargets.insert(payload.uploadId, pendingUpload);
-
-        auto *buffer = new QBuffer;
-        buffer->setData(payload.requestBody);
-        HttpMgr::getInstance().PostHttpReq(
-            QUrl(gate_url_prefix + "/upload_image"),
-            buffer,
-            payload.requestBody.size(),
-            ReqId::ID_UPLOAD_IMAGE,
-            Modules::CHATMOD);
-    });
-
     const QString uploadId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    watcher->setFuture(QtConcurrent::run([this, image, uploadId]() {
-        return encodeImageForUpload(image, uploadId);
-    }));
+    PendingImageUpload pendingUpload;
+    pendingUpload.contactId = contactId;
+    pendingUpload.clientMsgId = clientMsgId;
+    _pendingImageUploadTargets.insert(uploadId, pendingUpload);
+    emit sigStartImageUpload(gate_url_prefix, uploadId, image);
 }
 
 void ChatPage::populateImageMessage(MessageItem &item) const
@@ -1393,65 +1308,10 @@ void ChatPage::onPrivateMessagePush(const QJsonObject &payload)
     appendPrivateMessage(payload.value("message").toObject(), true);
 }
 
-void ChatPage::onChatHttpFinished(ReqId id, QString res, ErrorCodes err)
+void ChatPage::onImageUploadSucceeded(const QString &uploadId, const QString &resourceKey)
 {
-    if (id != ReqId::ID_UPLOAD_IMAGE) {
-        return;
-    }
-
-    auto failUpload = [this](const QString &uploadId) {
-        if (uploadId.isEmpty() || !_pendingImageUploadTargets.contains(uploadId)) {
-            return;
-        }
-        const PendingImageUpload pending = _pendingImageUploadTargets.take(uploadId);
-        if (!pending.clientMsgId.isEmpty()) {
-            updatePendingMessageState(pending.clientMsgId, MessageSendState::Failed);
-        }
-    };
-
-    auto failAllPendingUploads = [this]() {
-        const QList<PendingImageUpload> pendings = _pendingImageUploadTargets.values();
-        _pendingImageUploadTargets.clear();
-        for (const PendingImageUpload &pending : pendings) {
-            if (!pending.clientMsgId.isEmpty()) {
-                updatePendingMessageState(pending.clientMsgId, MessageSendState::Failed);
-            }
-        }
-    };
-
-    if (err != ErrorCodes::SUCCESS) {
-        failAllPendingUploads();
-        QMessageBox::warning(this,
-                             QStringLiteral("上传失败"),
-                             QStringLiteral("图片上传失败，请稍后再试。"));
-        return;
-    }
-
-    const QJsonDocument doc = QJsonDocument::fromJson(res.toUtf8());
-    if (doc.isNull() || !doc.isObject()) {
-        failAllPendingUploads();
-        QMessageBox::warning(this,
-                             QStringLiteral("上传失败"),
-                             QStringLiteral("图片上传回包解析失败。"));
-        return;
-    }
-
-    const QJsonObject obj = doc.object();
-    const QString uploadId = obj.value("upload_id").toString();
-    if (obj.value("error").toInt() != ErrorCodes::SUCCESS) {
-        failUpload(uploadId);
-        QMessageBox::warning(this,
-                             QStringLiteral("上传失败"),
-                             obj.value("message").toString(QStringLiteral("图片上传失败，请稍后再试。")));
-        return;
-    }
-
-    const QString resourceKey = normalizeImageResourceKey(
-        obj.value("resource_key").toString().isEmpty()
-            ? obj.value("path").toString()
-            : obj.value("resource_key").toString());
-    if (uploadId.isEmpty() || resourceKey.isEmpty() || !_pendingImageUploadTargets.contains(uploadId)) {
-        failUpload(uploadId);
+    const QString normalized = normalizeImageResourceKey(resourceKey);
+    if (uploadId.isEmpty() || normalized.isEmpty() || !_pendingImageUploadTargets.contains(uploadId)) {
         QMessageBox::warning(this,
                              QStringLiteral("上传失败"),
                              QStringLiteral("图片上传结果无效。"));
@@ -1471,11 +1331,25 @@ void ChatPage::onChatHttpFinished(ReqId id, QString res, ErrorCodes err)
     QJsonObject sendObj;
     sendObj["to_uid"] = pending.contactId;
     sendObj["content_type"] = "image";
-    sendObj["content"] = resourceKey;
+    sendObj["content"] = normalized;
     sendObj["client_msg_id"] = pending.clientMsgId;
     emit TcpMgr::getInstance().sig_send_data(
         ID_SEND_PRIVATE_MESSAGE_REQ,
         QString::fromUtf8(QJsonDocument(sendObj).toJson(QJsonDocument::Compact)));
+}
+
+void ChatPage::onImageUploadFailed(const QString &uploadId, const QString &message)
+{
+    if (!uploadId.isEmpty() && _pendingImageUploadTargets.contains(uploadId)) {
+        const PendingImageUpload pending = _pendingImageUploadTargets.take(uploadId);
+        if (!pending.clientMsgId.isEmpty()) {
+            updatePendingMessageState(pending.clientMsgId, MessageSendState::Failed);
+        }
+    }
+
+    QMessageBox::warning(this,
+                         QStringLiteral("上传失败"),
+                         message.isEmpty() ? QStringLiteral("图片上传失败，请稍后再试。") : message);
 }
 
 void ChatPage::ensureConversationForFriend(FriendRequestItem &item)

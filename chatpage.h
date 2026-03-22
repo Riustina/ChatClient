@@ -22,12 +22,14 @@ class ContactListWidget;
 class FriendRequestItemWidget;
 class MessageListWidget;
 class SearchPopupWidget;
+class ImageUploadWorker;
 class QLineEdit;
 class QLabel;
 class QNetworkAccessManager;
 class QPushButton;
 class QNetworkReply;
 class QScrollArea;
+class QThread;
 class QVBoxLayout;
 class QWidget;
 
@@ -43,6 +45,7 @@ public:
 signals:
     void friendRequestNotificationChanged(bool hasUnread);
     void chatMessageNotificationChanged(bool hasUnread);
+    void sigStartImageUpload(const QString &gateUrlPrefix, const QString &uploadId, const QImage &image);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -64,7 +67,8 @@ private slots:
     void onPrivateMessagesRsp(const QJsonObject &payload);
     void onSendPrivateMessageRsp(const QJsonObject &payload);
     void onPrivateMessagePush(const QJsonObject &payload);
-    void onChatHttpFinished(ReqId id, QString res, ErrorCodes err);
+    void onImageUploadSucceeded(const QString &uploadId, const QString &resourceKey);
+    void onImageUploadFailed(const QString &uploadId, const QString &message);
     void onRetryMessageRequested(const QString &clientMsgId);
     void onServerClosed();
     void onHistoryTopReached();
@@ -80,13 +84,6 @@ private:
     struct PendingImageUpload {
         int contactId = 0;
         QString clientMsgId;
-    };
-
-    struct EncodedImageUploadPayload {
-        QByteArray requestBody;
-        QString uploadId;
-        QString errorMessage;
-        bool success = false;
     };
 
     void setupUiExtensions();
@@ -106,7 +103,6 @@ private:
     QDateTime latestTimestamp(const Conversation &conversation) const;
     MessageItem createOutgoingTextMessage(const QString &text);
     MessageItem createOutgoingImageMessage(const QImage &image);
-    EncodedImageUploadPayload encodeImageForUpload(const QImage &image, const QString &uploadId) const;
     void startImageUpload(int contactId, const QString &clientMsgId, const QImage &image);
     void populateImageMessage(MessageItem &item) const;
     QString formatMessagePreview(const MessageItem &message) const;
@@ -166,6 +162,8 @@ private:
     QLabel *_friendRequestBadgeLabel = nullptr;
     QLabel *_chatBadgeLabel = nullptr;
     QNetworkAccessManager *_imageDownloadManager = nullptr;
+    QThread *_imageUploadThread = nullptr;
+    ImageUploadWorker *_imageUploadWorker = nullptr;
     bool _hasUnreadFriendRequestNotification = false;
     bool _hasUnreadChatNotification = false;
     bool _addFriendDialogActive = false;
