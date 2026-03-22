@@ -1807,7 +1807,9 @@ void ChatPage::cachePendingImage(const QString &clientMsgId, const QString &reso
 
     for (const Conversation &conversation : std::as_const(_conversations)) {
         for (const MessageItem &message : conversation.messages) {
-            if (message.clientMsgId != clientMsgId || message.type != ChatMessageType::Image || message.image.isNull()) {
+            if (message.clientMsgId != clientMsgId
+                || message.type != ChatMessageType::Image
+                || message.image.isNull()) {
                 continue;
             }
 
@@ -1815,7 +1817,12 @@ void ChatPage::cachePendingImage(const QString &clientMsgId, const QString &reso
             if (!cacheDir.exists()) {
                 cacheDir.mkpath(QStringLiteral("."));
             }
-            message.image.save(cachePath, "PNG");
+
+            // 拷贝一份图片数据，丢到线程池异步写，主线程立即返回
+            const QImage imageCopy = message.image;
+            QtConcurrent::run([imageCopy, cachePath]() {
+                imageCopy.save(cachePath, "PNG");
+            });
             return;
         }
     }

@@ -2,7 +2,6 @@
 #include "global.h"
 
 #include <QBuffer>
-#include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkAccessManager>
@@ -83,7 +82,7 @@ EncodedImagePayload encodeImageForUpload(const QImage &image, const QString &upl
     payload.errorMessage = QStringLiteral("图片过大，请尝试更小的图片。");
     return payload;
 }
-}
+} // namespace
 
 ImageUploadWorker::ImageUploadWorker(QObject *parent)
     : QObject(parent)
@@ -92,6 +91,9 @@ ImageUploadWorker::ImageUploadWorker(QObject *parent)
 
 void ImageUploadWorker::uploadImage(const QString &gateUrlPrefix, const QString &uploadId, const QImage &image)
 {
+    if (!m_manager) {
+        m_manager = new QNetworkAccessManager(this);
+    }
     const EncodedImagePayload payload = encodeImageForUpload(image, uploadId);
     if (!payload.success || payload.requestBody.isEmpty()) {
         emit uploadFailed(uploadId,
@@ -101,27 +103,40 @@ void ImageUploadWorker::uploadImage(const QString &gateUrlPrefix, const QString 
         return;
     }
 
-    QNetworkAccessManager manager;
     QNetworkRequest request(QUrl(gateUrlPrefix + "/upload_image"));
     request.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
     request.setHeader(QNetworkRequest::ContentLengthHeader, QByteArray::number(payload.requestBody.size()));
 
-    QEventLoop loop;
-    QNetworkReply *reply = manager.post(request, payload.requestBody);
-    connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
-    loop.exec();
+    QNetworkReply *reply = m_manager->post(request, payload.requestBody);
+    m_pendingReplies.insert(reply, uploadId);
+
+    // 异步：reply 完成时通知我们，不阻塞任何线程
+    connect(reply, &QNetworkReply::finished, this, &ImageUploadWorker::onReplyFinished);
+}
+
+void ImageUploadWorker::onReplyFinished()
+{
+    QNetworkReply *reply = qobject_cast<QNetworkReply *>(sender());
+    if (!reply) {
+        return;
+    }
+
+    const QString uploadId = m_pendingReplies.take(reply);
+    reply->deleteLater();
+
+    if (uploadId.isEmpty()) {
+        // 不在追踪列表里，忽略
+        return;
+    }
 
     if (reply->error() != QNetworkReply::NoError) {
         const QString message = reply->errorString();
-        reply->deleteLater();
         emit uploadFailed(uploadId,
                           message.isEmpty() ? QStringLiteral("图片上传失败，请稍后再试。") : message);
         return;
     }
 
     const QByteArray responseBytes = reply->readAll();
-    reply->deleteLater();
-
     const QJsonDocument doc = QJsonDocument::fromJson(responseBytes);
     if (doc.isNull() || !doc.isObject()) {
         emit uploadFailed(uploadId, QStringLiteral("图片上传回包解析失败。"));
