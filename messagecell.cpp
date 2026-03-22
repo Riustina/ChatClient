@@ -106,8 +106,10 @@ QSize textLayoutSize(const QString &text, int maxBubbleWidth)
     font.setStyleStrategy(QFont::PreferAntialias);
     const QFontMetrics metrics(font);
     const int maxTextWidth    = qMax(1, maxBubbleWidth - 2 * kBubblePaddingH);
-    const int singleLineWidth = qMax(1, metrics.horizontalAdvance(text));
-    const int textWidth       = qMin(maxTextWidth, singleLineWidth);
+    const int singleLineWidth = qMax(metrics.horizontalAdvance(text),
+                                     metrics.boundingRect(text).width());
+    // 留出一点额外空间，避免不同机器上的字形渲染把最后一个字符裁掉。
+    const int textWidth       = qMin(maxTextWidth, qMax(1, singleLineWidth + 6));
     const QRect wrappedRect   = metrics.boundingRect(QRect(0, 0, textWidth, 100000),
                                                    Qt::TextWordWrap | Qt::AlignLeft | Qt::AlignTop,
                                                    text);
