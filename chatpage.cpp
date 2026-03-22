@@ -37,10 +37,12 @@
 #include <QScrollArea>
 #include <QStandardPaths>
 #include <QTimer>
+#include <QFutureWatcher>
 #include <QUuid>
 #include <QUrlQuery>
 #include <QVBoxLayout>
 #include <QStyle>
+#include <QtConcurrent/QtConcurrent>
 #include <algorithm>
 
 namespace {
@@ -201,29 +203,7 @@ void ChatPage::onSendClicked()
     if (!pastedImage.isNull()) {
         MessageItem message = createOutgoingImageMessage(pastedImage);
         appendPendingOutgoingMessage(contactId, message);
-        const QByteArray encodedImage = encodeImageForUpload(pastedImage);
-        if (encodedImage.isEmpty()) {
-            updatePendingMessageState(message.clientMsgId, MessageSendState::Failed);
-            QMessageBox::warning(this,
-                                 QStringLiteral("发送失败"),
-                                 QStringLiteral("图片过大，请尝试更小的图片。"));
-            return;
-        }
-
-        const QString uploadId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-        PendingImageUpload pendingUpload;
-        pendingUpload.contactId = contactId;
-        pendingUpload.clientMsgId = message.clientMsgId;
-        _pendingImageUploadTargets.insert(uploadId, pendingUpload);
-        QJsonObject imageObj;
-        imageObj["upload_id"] = uploadId;
-        imageObj["content_encoding"] = "zlib+png";
-        imageObj["content"] = QString::fromLatin1(encodedImage);
-        HttpMgr::getInstance().PostHttpReq(
-            QUrl(gate_url_prefix + "/upload_image"),
-            imageObj,
-            ReqId::ID_UPLOAD_IMAGE,
-            Modules::CHATMOD);
+        startImageUpload(contactId, message.clientMsgId, pastedImage);
     }
     if (!text.isEmpty()) {
         MessageItem message = createOutgoingTextMessage(text);
@@ -679,31 +659,111 @@ MessageItem ChatPage::createOutgoingImageMessage(const QImage &image)
     return message;
 }
 
-QByteArray ChatPage::encodeImageForUpload(const QImage &image) const
+ChatPage::EncodedImageUploadPayload ChatPage::encodeImageForUpload(const QImage &image) const
 {
+    EncodedImageUploadPayload payload;
     if (image.isNull()) {
-        return {};
+        payload.errorMessage = QStringLiteral("图片数据无效。");
+        return payload;
     }
 
-    constexpr int kMaxEncodedBytes = 8 * 1024 * 1024;
+    // GateServer 目前已经放宽到 32MB，这里给 JSON 和其它字段留出余量，
+    // 客户端本地编码后上限放宽到 30MB，避免在上传前过早失败。
+    constexpr int kMaxEncodedBytes = 30 * 1024 * 1024;
     const QImage normalized = image.convertToFormat(QImage::Format_RGBA8888);
-
-    QByteArray pngBytes;
-    {
+    auto encodePngPayload = [&normalized]() -> QByteArray {
+        QByteArray pngBytes;
         QBuffer pngBuffer(&pngBytes);
         pngBuffer.open(QIODevice::WriteOnly);
         if (!normalized.save(&pngBuffer, "PNG")) {
             return {};
         }
+        return qCompress(pngBytes, 9).toBase64();
+    };
+
+    const QByteArray pngPayload = encodePngPayload();
+    if (!pngPayload.isEmpty() && pngPayload.size() <= kMaxEncodedBytes) {
+        payload.content = pngPayload;
+        payload.contentEncoding = QStringLiteral("zlib+png");
+        payload.success = true;
+        return payload;
     }
 
-    const QByteArray compressed = qCompress(pngBytes, 9);
-    const QByteArray encoded = compressed.toBase64();
-    if (encoded.size() <= kMaxEncodedBytes) {
-        return encoded;
+    QImage jpegSource = normalized;
+    if (jpegSource.hasAlphaChannel()) {
+        QImage flattened(jpegSource.size(), QImage::Format_RGB888);
+        flattened.fill(Qt::white);
+        QPainter painter(&flattened);
+        painter.drawImage(QPoint(0, 0), jpegSource);
+        painter.end();
+        jpegSource = flattened;
+    } else {
+        jpegSource = jpegSource.convertToFormat(QImage::Format_RGB888);
     }
 
-    return {};
+    const QList<int> jpegQualities = { 92, 85, 78, 70, 62, 54, 46, 38, 30 };
+    for (int quality : jpegQualities) {
+        QByteArray jpegBytes;
+        QBuffer jpegBuffer(&jpegBytes);
+        jpegBuffer.open(QIODevice::WriteOnly);
+        if (!jpegSource.save(&jpegBuffer, "JPEG", quality)) {
+            continue;
+        }
+
+        const QByteArray encoded = jpegBytes.toBase64();
+        if (encoded.size() <= kMaxEncodedBytes) {
+            payload.content = encoded;
+            payload.contentEncoding = QStringLiteral("jpeg");
+            payload.success = true;
+            return payload;
+        }
+    }
+
+    payload.errorMessage = QStringLiteral("图片过大，请尝试更小的图片。");
+    return payload;
+}
+
+void ChatPage::startImageUpload(int contactId, const QString &clientMsgId, const QImage &image)
+{
+    if (clientMsgId.isEmpty()) {
+        return;
+    }
+
+    auto *watcher = new QFutureWatcher<EncodedImageUploadPayload>(this);
+    connect(watcher, &QFutureWatcher<EncodedImageUploadPayload>::finished, this, [this, watcher, contactId, clientMsgId]() {
+        const EncodedImageUploadPayload payload = watcher->result();
+        watcher->deleteLater();
+
+        if (!payload.success || payload.content.isEmpty()) {
+            updatePendingMessageState(clientMsgId, MessageSendState::Failed);
+            QMessageBox::warning(this,
+                                 QStringLiteral("发送失败"),
+                                 payload.errorMessage.isEmpty()
+                                     ? QStringLiteral("图片过大，请尝试更小的图片。")
+                                     : payload.errorMessage);
+            return;
+        }
+
+        const QString uploadId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        PendingImageUpload pendingUpload;
+        pendingUpload.contactId = contactId;
+        pendingUpload.clientMsgId = clientMsgId;
+        _pendingImageUploadTargets.insert(uploadId, pendingUpload);
+
+        QJsonObject imageObj;
+        imageObj["upload_id"] = uploadId;
+        imageObj["content_encoding"] = payload.contentEncoding;
+        imageObj["content"] = QString::fromLatin1(payload.content);
+        HttpMgr::getInstance().PostHttpReq(
+            QUrl(gate_url_prefix + "/upload_image"),
+            imageObj,
+            ReqId::ID_UPLOAD_IMAGE,
+            Modules::CHATMOD);
+    });
+
+    watcher->setFuture(QtConcurrent::run([this, image]() {
+        return encodeImageForUpload(image);
+    }));
 }
 
 void ChatPage::populateImageMessage(MessageItem &item) const
@@ -1563,7 +1623,8 @@ void ChatPage::appendPendingOutgoingMessage(int contactId, const MessageItem &me
     bindConversation(index);
 
     const QString clientMsgId = message.clientMsgId;
-    QTimer::singleShot(10000, this, [this, clientMsgId]() {
+    const int timeoutMs = message.type == ChatMessageType::Image ? 30000 : 10000;
+    QTimer::singleShot(timeoutMs, this, [this, clientMsgId]() {
         updatePendingMessageState(clientMsgId, MessageSendState::Failed);
     });
 }
@@ -1641,26 +1702,7 @@ bool ChatPage::retryMessageByClientId(const QString &clientMsgId)
                             QString::fromUtf8(QJsonDocument(sendObj).toJson(QJsonDocument::Compact)));
                     }
                 } else {
-                    const QByteArray encodedImage = encodeImageForUpload(message.image);
-                    if (encodedImage.isEmpty()) {
-                        message.sendState = MessageSendState::Failed;
-                        return false;
-                    }
-                    const QString uploadId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-                    PendingImageUpload pendingUpload;
-                    pendingUpload.contactId = contactId;
-                    pendingUpload.clientMsgId = message.clientMsgId;
-                    _pendingImageUploadTargets.insert(uploadId, pendingUpload);
-
-                    QJsonObject imageObj;
-                    imageObj["upload_id"] = uploadId;
-                    imageObj["content_encoding"] = "zlib+png";
-                    imageObj["content"] = QString::fromLatin1(encodedImage);
-                    HttpMgr::getInstance().PostHttpReq(
-                        QUrl(gate_url_prefix + "/upload_image"),
-                        imageObj,
-                        ReqId::ID_UPLOAD_IMAGE,
-                        Modules::CHATMOD);
+                    startImageUpload(contactId, message.clientMsgId, message.image);
                 }
             } else {
                 if (!chatAvailable) {

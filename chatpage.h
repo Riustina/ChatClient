@@ -82,6 +82,13 @@ private:
         QString clientMsgId;
     };
 
+    struct EncodedImageUploadPayload {
+        QByteArray content;
+        QString contentEncoding;
+        QString errorMessage;
+        bool success = false;
+    };
+
     void setupUiExtensions();
     void setupNavigation();
     void setupFriendRequestPage();
@@ -99,7 +106,8 @@ private:
     QDateTime latestTimestamp(const Conversation &conversation) const;
     MessageItem createOutgoingTextMessage(const QString &text);
     MessageItem createOutgoingImageMessage(const QImage &image);
-    QByteArray encodeImageForUpload(const QImage &image) const;
+    EncodedImageUploadPayload encodeImageForUpload(const QImage &image) const;
+    void startImageUpload(int contactId, const QString &clientMsgId, const QImage &image);
     void populateImageMessage(MessageItem &item) const;
     QString formatMessagePreview(const MessageItem &message) const;
     QString formatMessageTime(const QDateTime &timestamp) const;
