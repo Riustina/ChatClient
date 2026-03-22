@@ -1818,10 +1818,16 @@ void ChatPage::cachePendingImage(const QString &clientMsgId, const QString &reso
                 cacheDir.mkpath(QStringLiteral("."));
             }
 
-            // 拷贝一份图片数据，丢到线程池异步写，主线程立即返回
             const QImage imageCopy = message.image;
-            QtConcurrent::run([imageCopy, cachePath]() {
-                imageCopy.save(cachePath, "PNG");
+            // 写到 .tmp 文件，写完再 rename，避免接收方看到半截文件
+            const QString tmpPath = cachePath + QStringLiteral(".tmp");
+            QtConcurrent::run([imageCopy, cachePath, tmpPath]() {
+                if (imageCopy.save(tmpPath, "PNG")) {
+                    QFile::remove(cachePath);
+                    QFile::rename(tmpPath, cachePath);
+                } else {
+                    QFile::remove(tmpPath);
+                }
             });
             return;
         }
@@ -1939,23 +1945,27 @@ void ChatPage::applyLoadedImageResource(const QString &resourceKey, const QImage
         return;
     }
 
-    bool changed = false;
-    for (Conversation &conversation : _conversations) {
-        for (MessageItem &message : conversation.messages) {
+    bool currentConversationChanged = false;
+    for (int i = 0; i < _conversations.size(); ++i) {
+        bool conversationChanged = false;
+        for (MessageItem &message : _conversations[i].messages) {
             if (message.type != ChatMessageType::Image) {
                 continue;
             }
             if (normalizeImageResourceKey(message.text) != normalized) {
                 continue;
             }
-
             message.image = image;
-            changed = true;
+            conversationChanged = true;
+            if (i == _currentConversation) {
+                currentConversationChanged = true;
+            }
         }
     }
 
-    if (changed && _currentConversation >= 0 && _currentConversation < _conversations.size()) {
-        _messageListWidget->refreshMessagesPreservePosition(_conversations[_currentConversation].messages);
+    if (currentConversationChanged) {
+        _messageListWidget->refreshMessagesPreservePosition(
+            _conversations[_currentConversation].messages);
     }
 }
 
