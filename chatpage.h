@@ -159,6 +159,7 @@ private:
     bool _hasUnreadFriendRequestNotification = false;
     bool _hasUnreadChatNotification = false;
     bool _addFriendDialogActive = false;
+    bool _searchPopupActionActive = false;
     bool _usingRemoteSearchResults = false;
     QSet<QString> _downloadingImageResources;
     int _currentUserId = 0;

@@ -262,11 +262,16 @@ void ChatPage::onSearchTextChanged(const QString &text)
 
 void ChatPage::onPopupAddFriendClicked(const QString &text)
 {
+    if (_searchPopupActionActive || _addFriendDialogActive) {
+        return;
+    }
+    _searchPopupActionActive = true;
     hideSearchPopup();
     ui->searchLineEdit->clearFocus();
 
     const QString keyword = text.trimmed();
     if (keyword.isEmpty()) {
+        _searchPopupActionActive = false;
         return;
     }
 
@@ -276,19 +281,22 @@ void ChatPage::onPopupAddFriendClicked(const QString &text)
     obj["keyword"] = keyword;
     obj["limit"] = 20;
     emit TcpMgr::getInstance().sig_send_data(ID_SEARCH_USER_REQ, QString::fromUtf8(QJsonDocument(obj).toJson(QJsonDocument::Compact)));
+    _searchPopupActionActive = false;
 }
 
 void ChatPage::onPopupContactClicked(int contactId)
 {
-    if (_addFriendDialogActive) {
+    if (_searchPopupActionActive || _addFriendDialogActive) {
         return;
     }
+    _searchPopupActionActive = true;
 
     const int index = conversationIndexById(contactId);
     if (index >= 0) {
         bindConversation(index);
         syncContactList();
         hideSearchPopup();
+        _searchPopupActionActive = false;
         return;
     }
 
@@ -301,6 +309,7 @@ void ChatPage::onPopupContactClicked(int contactId)
     }
     if (targetContact.id <= 0) {
         hideSearchPopup();
+        _searchPopupActionActive = false;
         return;
     }
 
@@ -310,18 +319,20 @@ void ChatPage::onPopupContactClicked(int contactId)
         }
 
         if (request.state == FriendRequestState::Added) {
-                QMessageBox::information(this,
+            QMessageBox::information(this,
                                      QStringLiteral("提示"),
                                      QStringLiteral("你们已经是好友了。"));
             hideSearchPopup();
+            _searchPopupActionActive = false;
             return;
         }
 
         if (request.state == FriendRequestState::Pending) {
-                QMessageBox::information(this,
+            QMessageBox::information(this,
                                      QStringLiteral("提示"),
                                      QStringLiteral("你已经向对方发送过好友申请，请等待处理。"));
             hideSearchPopup();
+            _searchPopupActionActive = false;
             return;
         }
     }
@@ -340,6 +351,7 @@ void ChatPage::onPopupContactClicked(int contactId)
     }
     ui->searchLineEdit->clearFocus();
     hideSearchPopup();
+    _searchPopupActionActive = false;
 }
 
 void ChatPage::setupUiExtensions()

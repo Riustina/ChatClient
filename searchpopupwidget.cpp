@@ -7,6 +7,7 @@
 #include <QMouseEvent>
 #include <QResizeEvent>
 #include <QScrollArea>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
@@ -31,11 +32,13 @@ signals:
     void clicked();
 
 protected:
-    void mousePressEvent(QMouseEvent *event) override
+    void mouseReleaseEvent(QMouseEvent *event) override
     {
-        QFrame::mousePressEvent(event);
+        QFrame::mouseReleaseEvent(event);
         if (event->button() == Qt::LeftButton) {
-            emit clicked();
+            QTimer::singleShot(0, this, [this]() {
+                emit clicked();
+            });
         }
     }
 };
@@ -129,7 +132,9 @@ void SearchPopupWidget::rebuild()
             cell->setContact(contact);
             cell->setSelected(contact.id == _selectedId);
             connect(cell, &ContactCell::clicked, this, [this, contact]() {
-                emit contactClicked(contact.id);
+                QTimer::singleShot(0, this, [this, contact]() {
+                    emit contactClicked(contact.id);
+                });
             });
             _layout->addWidget(cell);
         }
