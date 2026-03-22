@@ -44,6 +44,26 @@ void MessageListWidget::setMessages(const QVector<MessageItem> &messages)
     scrollToBottom();
 }
 
+void MessageListWidget::refreshMessagesPreservePosition(const QVector<MessageItem> &messages)
+{
+    const bool wasNearBottom = isNearBottom();
+    const int oldMax = verticalScrollBar()->maximum();
+    const int oldValue = verticalScrollBar()->value();
+
+    _messages = messages;
+    rebuildPool();
+    recalculateLayout();
+    updateVisibleCells();
+
+    if (wasNearBottom) {
+        scrollToBottom();
+        return;
+    }
+
+    const int delta = verticalScrollBar()->maximum() - oldMax;
+    verticalScrollBar()->setValue(oldValue + qMax(0, delta));
+}
+
 void MessageListWidget::appendMessage(const MessageItem &message)
 {
     const bool shouldFollow = _autoFollowLatest || isNearBottom();

@@ -2074,7 +2074,7 @@ void ChatPage::applyLoadedImageResource(const QString &resourceKey, const QImage
     }
 
     if (changed && _currentConversation >= 0 && _currentConversation < _conversations.size()) {
-        bindConversation(_currentConversation);
+        _messageListWidget->refreshMessagesPreservePosition(_conversations[_currentConversation].messages);
     }
 }
 
@@ -2105,6 +2105,6 @@ void ChatPage::refreshImageResource(const QString &resourceKey)
     }
 
     if (changed && _currentConversation >= 0 && _currentConversation < _conversations.size()) {
-        bindConversation(_currentConversation);
+        _messageListWidget->refreshMessagesPreservePosition(_conversations[_currentConversation].messages);
     }
 }

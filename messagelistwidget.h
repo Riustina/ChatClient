@@ -16,6 +16,7 @@ public:
     explicit MessageListWidget(QWidget *parent = nullptr);
 
     void setMessages(const QVector<MessageItem> &messages);
+    void refreshMessagesPreservePosition(const QVector<MessageItem> &messages);
     void appendMessage(const MessageItem &message);
     void prependMessages(const QVector<MessageItem> &messages);
 
