@@ -34,6 +34,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QImageReader>
 #include <QScrollArea>
 #include <QStandardPaths>
 #include <QTimer>
@@ -659,7 +660,7 @@ MessageItem ChatPage::createOutgoingImageMessage(const QImage &image)
     return message;
 }
 
-ChatPage::EncodedImageUploadPayload ChatPage::encodeImageForUpload(const QImage &image) const
+ChatPage::EncodedImageUploadPayload ChatPage::encodeImageForUpload(const QImage &image, const QString &uploadId) const
 {
     EncodedImageUploadPayload payload;
     if (image.isNull()) {
@@ -683,8 +684,12 @@ ChatPage::EncodedImageUploadPayload ChatPage::encodeImageForUpload(const QImage 
 
     const QByteArray pngPayload = encodePngPayload();
     if (!pngPayload.isEmpty() && pngPayload.size() <= kMaxEncodedBytes) {
-        payload.content = pngPayload;
-        payload.contentEncoding = QStringLiteral("zlib+png");
+        QJsonObject imageObj;
+        imageObj["upload_id"] = uploadId;
+        imageObj["content_encoding"] = QStringLiteral("zlib+png");
+        imageObj["content"] = QString::fromLatin1(pngPayload);
+        payload.requestBody = QJsonDocument(imageObj).toJson(QJsonDocument::Compact);
+        payload.uploadId = uploadId;
         payload.success = true;
         return payload;
     }
@@ -712,8 +717,12 @@ ChatPage::EncodedImageUploadPayload ChatPage::encodeImageForUpload(const QImage 
 
         const QByteArray encoded = jpegBytes.toBase64();
         if (encoded.size() <= kMaxEncodedBytes) {
-            payload.content = encoded;
-            payload.contentEncoding = QStringLiteral("jpeg");
+            QJsonObject imageObj;
+            imageObj["upload_id"] = uploadId;
+            imageObj["content_encoding"] = QStringLiteral("jpeg");
+            imageObj["content"] = QString::fromLatin1(encoded);
+            payload.requestBody = QJsonDocument(imageObj).toJson(QJsonDocument::Compact);
+            payload.uploadId = uploadId;
             payload.success = true;
             return payload;
         }
@@ -734,7 +743,7 @@ void ChatPage::startImageUpload(int contactId, const QString &clientMsgId, const
         const EncodedImageUploadPayload payload = watcher->result();
         watcher->deleteLater();
 
-        if (!payload.success || payload.content.isEmpty()) {
+        if (!payload.success || payload.requestBody.isEmpty() || payload.uploadId.isEmpty()) {
             updatePendingMessageState(clientMsgId, MessageSendState::Failed);
             QMessageBox::warning(this,
                                  QStringLiteral("发送失败"),
@@ -744,25 +753,24 @@ void ChatPage::startImageUpload(int contactId, const QString &clientMsgId, const
             return;
         }
 
-        const QString uploadId = QUuid::createUuid().toString(QUuid::WithoutBraces);
         PendingImageUpload pendingUpload;
         pendingUpload.contactId = contactId;
         pendingUpload.clientMsgId = clientMsgId;
-        _pendingImageUploadTargets.insert(uploadId, pendingUpload);
+        _pendingImageUploadTargets.insert(payload.uploadId, pendingUpload);
 
-        QJsonObject imageObj;
-        imageObj["upload_id"] = uploadId;
-        imageObj["content_encoding"] = payload.contentEncoding;
-        imageObj["content"] = QString::fromLatin1(payload.content);
+        auto *buffer = new QBuffer;
+        buffer->setData(payload.requestBody);
         HttpMgr::getInstance().PostHttpReq(
             QUrl(gate_url_prefix + "/upload_image"),
-            imageObj,
+            buffer,
+            payload.requestBody.size(),
             ReqId::ID_UPLOAD_IMAGE,
             Modules::CHATMOD);
     });
 
-    watcher->setFuture(QtConcurrent::run([this, image]() {
-        return encodeImageForUpload(image);
+    const QString uploadId = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    watcher->setFuture(QtConcurrent::run([this, image, uploadId]() {
+        return encodeImageForUpload(image, uploadId);
     }));
 }
 
@@ -1893,9 +1901,13 @@ void ChatPage::ensureImageAvailable(MessageItem &item)
 
     const QString localPath = localImageCachePath(item.text);
     if (!localPath.isEmpty()) {
-        const QImage localImage(localPath);
-        if (!localImage.isNull()) {
-            item.image = localImage;
+        const QString resourceKey = normalizeImageResourceKey(item.text);
+        if (_loadingImageResources.contains(resourceKey)) {
+            return;
+        }
+        const QImageReader reader(localPath);
+        if (reader.canRead()) {
+            requestImageLoad(resourceKey, localPath);
             return;
         }
     }
@@ -1961,6 +1973,29 @@ void ChatPage::requestImageDownload(const QString &resourceKey)
     reply->setProperty("resource_key", normalized);
 }
 
+void ChatPage::requestImageLoad(const QString &resourceKey, const QString &cachePath)
+{
+    const QString normalized = normalizeImageResourceKey(resourceKey);
+    if (normalized.isEmpty() || cachePath.isEmpty() || _loadingImageResources.contains(normalized)) {
+        return;
+    }
+
+    _loadingImageResources.insert(normalized);
+    auto *watcher = new QFutureWatcher<QImage>(this);
+    connect(watcher, &QFutureWatcher<QImage>::finished, this, [this, watcher, normalized]() {
+        const QImage image = watcher->result();
+        watcher->deleteLater();
+        _loadingImageResources.remove(normalized);
+        if (!image.isNull()) {
+            applyLoadedImageResource(normalized, image);
+        }
+    });
+
+    watcher->setFuture(QtConcurrent::run([cachePath]() {
+        return QImage(cachePath);
+    }));
+}
+
 void ChatPage::onImageDownloadFinished(QNetworkReply *reply)
 {
     const QString resourceKey = reply->property("resource_key").toString();
@@ -1982,19 +2017,65 @@ void ChatPage::onImageDownloadFinished(QNetworkReply *reply)
         return;
     }
 
-    QDir cacheDir(QFileInfo(cachePath).absolutePath());
-    if (!cacheDir.exists() && !cacheDir.mkpath(QStringLiteral("."))) {
+    if (_loadingImageResources.contains(resourceKey)) {
         return;
     }
 
-    QFile output(cachePath);
-    if (!output.open(QIODevice::WriteOnly)) {
+    _loadingImageResources.insert(resourceKey);
+    auto *watcher = new QFutureWatcher<QImage>(this);
+    connect(watcher, &QFutureWatcher<QImage>::finished, this, [this, watcher, resourceKey]() {
+        const QImage image = watcher->result();
+        watcher->deleteLater();
+        _loadingImageResources.remove(resourceKey);
+        if (!image.isNull()) {
+            applyLoadedImageResource(resourceKey, image);
+        }
+    });
+
+    watcher->setFuture(QtConcurrent::run([cachePath, bytes]() {
+        QDir cacheDir(QFileInfo(cachePath).absolutePath());
+        if (!cacheDir.exists() && !cacheDir.mkpath(QStringLiteral("."))) {
+            return QImage();
+        }
+
+        QFile output(cachePath);
+        if (!output.open(QIODevice::WriteOnly)) {
+            return QImage();
+        }
+        if (output.write(bytes) != bytes.size()) {
+            output.close();
+            return QImage();
+        }
+        output.close();
+        return QImage::fromData(bytes);
+    }));
+}
+
+void ChatPage::applyLoadedImageResource(const QString &resourceKey, const QImage &image)
+{
+    const QString normalized = normalizeImageResourceKey(resourceKey);
+    if (normalized.isEmpty() || image.isNull()) {
         return;
     }
-    output.write(bytes);
-    output.close();
 
-    refreshImageResource(resourceKey);
+    bool changed = false;
+    for (Conversation &conversation : _conversations) {
+        for (MessageItem &message : conversation.messages) {
+            if (message.type != ChatMessageType::Image) {
+                continue;
+            }
+            if (normalizeImageResourceKey(message.text) != normalized) {
+                continue;
+            }
+
+            message.image = image;
+            changed = true;
+        }
+    }
+
+    if (changed && _currentConversation >= 0 && _currentConversation < _conversations.size()) {
+        bindConversation(_currentConversation);
+    }
 }
 
 void ChatPage::refreshImageResource(const QString &resourceKey)

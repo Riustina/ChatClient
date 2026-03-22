@@ -11,6 +11,14 @@ int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
     a.setWindowIcon(QIcon(":/icons/app_logo.svg"));
+    a.setStyleSheet(a.styleSheet() +
+                    QStringLiteral(
+                        "QMessageBox { background:#F4F3F9; }"
+                        "QMessageBox QLabel { color:#111827; font:10pt 'Microsoft YaHei UI'; }"
+                        "QMessageBox QPushButton { min-width:84px; min-height:32px; padding:0 14px; "
+                        "background:#E5E7EB; color:#111827; border:none; border-radius:16px; font:10pt 'Microsoft YaHei UI'; }"
+                        "QMessageBox QPushButton:hover { background:#D7DAE0; }"
+                        "QMessageBox QPushButton:pressed { background:#C9CDD4; }"));
 
     const QString fileName = QStringLiteral("config.ini");
     const QString appPath = QCoreApplication::applicationDirPath();

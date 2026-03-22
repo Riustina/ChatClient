@@ -50,6 +50,10 @@ private:
 
     void initHandlers();
     void dispatchMsg(quint16 msgId, const QByteArray& body);
+    void startReconnect();
+    void resetReconnectState();
+    void finishReconnectFailure();
+    void sendChatLogin();
 
     QTcpSocket  _socket;
     QString     _host;
@@ -61,6 +65,8 @@ private:
     quint16     _message_id;
     quint16     _message_len;
     bool        _chat_logged_in;
+    bool        _reconnect_in_progress;
+    bool        _reconnect_attempted;
 
     using MsgHandler = std::function<void(ReqId, int, QByteArray)>;
     QHash<ReqId, MsgHandler> _handlers;   // QHash O(1) 查找

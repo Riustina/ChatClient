@@ -3,8 +3,10 @@
 #include <QKeyEvent>
 #include <QMimeData>
 #include <QPalette>
+#include <QTextBlock>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTextFragment>
 #include <QTextImageFormat>
 #include <QUrl>
 
@@ -102,7 +104,21 @@ void ChatInputEdit::syncPendingImageState()
         return;
     }
 
-    if (!toPlainText().contains(QChar::ObjectReplacementCharacter)) {
+    bool hasImageFragment = false;
+    for (QTextBlock block = document()->begin(); block.isValid() && !hasImageFragment; block = block.next()) {
+        for (QTextBlock::iterator it = block.begin(); !it.atEnd(); ++it) {
+            const QTextFragment fragment = it.fragment();
+            if (!fragment.isValid()) {
+                continue;
+            }
+            if (fragment.charFormat().isImageFormat()) {
+                hasImageFragment = true;
+                break;
+            }
+        }
+    }
+
+    if (!hasImageFragment) {
         _pendingImage = QImage();
     }
 }

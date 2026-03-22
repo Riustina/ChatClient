@@ -83,8 +83,8 @@ private:
     };
 
     struct EncodedImageUploadPayload {
-        QByteArray content;
-        QString contentEncoding;
+        QByteArray requestBody;
+        QString uploadId;
         QString errorMessage;
         bool success = false;
     };
@@ -106,7 +106,7 @@ private:
     QDateTime latestTimestamp(const Conversation &conversation) const;
     MessageItem createOutgoingTextMessage(const QString &text);
     MessageItem createOutgoingImageMessage(const QImage &image);
-    EncodedImageUploadPayload encodeImageForUpload(const QImage &image) const;
+    EncodedImageUploadPayload encodeImageForUpload(const QImage &image, const QString &uploadId) const;
     void startImageUpload(int contactId, const QString &clientMsgId, const QImage &image);
     void populateImageMessage(MessageItem &item) const;
     QString formatMessagePreview(const MessageItem &message) const;
@@ -142,6 +142,8 @@ private:
     QString localImageCachePath(const QString &resourceKey) const;
     void ensureImageAvailable(MessageItem &item);
     void cachePendingImage(const QString &clientMsgId, const QString &resourceKey);
+    void requestImageLoad(const QString &resourceKey, const QString &cachePath);
+    void applyLoadedImageResource(const QString &resourceKey, const QImage &image);
     void requestImageDownload(const QString &resourceKey);
     void onImageDownloadFinished(QNetworkReply *reply);
     void refreshImageResource(const QString &resourceKey);
@@ -170,6 +172,7 @@ private:
     bool _searchPopupActionActive = false;
     bool _usingRemoteSearchResults = false;
     QSet<QString> _downloadingImageResources;
+    QSet<QString> _loadingImageResources;
     int _currentUserId = 0;
     QString _currentUserName;
     int _currentConversation = -1;

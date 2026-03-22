@@ -1,6 +1,7 @@
 #ifndef HTTPMGR_H
 #define HTTPMGR_H
 #include <QObject>
+#include <QIODevice>
 #include <QNetworkAccessManager>
 #include <QUrl>
 #include <QString>
@@ -16,6 +17,8 @@ class HttpMgr : public QObject,
 public:
     ~HttpMgr();
     void PostHttpReq(QUrl url, QJsonObject json, ReqId req_id, Modules module);
+    void PostHttpReq(QUrl url, const QByteArray &data, ReqId req_id, Modules module);
+    void PostHttpReq(QUrl url, QIODevice *device, qint64 contentLength, ReqId req_id, Modules module);
 
 private:
     friend class Singleton<HttpMgr>;
