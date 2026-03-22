@@ -370,6 +370,9 @@ void ChatPage::setupUiExtensions()
     ui->chatNavButton->setFixedSize(30, 30);
     ui->friendRequestNavButton->setFixedSize(30, 30);
     ui->mockReceiveButton->hide();
+    ui->headerActionButton1->hide();
+    ui->headerActionButton2->hide();
+    ui->headerActionButton3->hide();
     ui->navLayout->setAlignment(ui->chatNavButton, Qt::AlignHCenter);
     ui->navLayout->setAlignment(ui->friendRequestNavButton, Qt::AlignHCenter);
     ui->composerFrame->setMinimumHeight(165);
@@ -405,7 +408,7 @@ void ChatPage::setupUiExtensions()
         "QPushButton#sendButton { min-width:82px; min-height:34px; border:none; border-radius:17px; font: 10pt 'Microsoft YaHei UI'; }"
         "QPushButton#sendButton { background:#CBCACF; color:#111827; }"
         "QPushButton#sendButton:pressed { background:#b9b7be; padding-top:1px; }"
-        "QTextEdit { background:#F4F3F9; border:none; border-radius:18px; padding:12px; font: 10pt 'Microsoft YaHei UI'; }"
+        "QTextEdit { background:#F4F3F9; border:none; border-radius:18px; padding:12px; font: 10pt 'Microsoft YaHei UI'; color:#111827; selection-background-color:#DBEAFE; selection-color:#111827; }"
         "QLabel#friendRequestTitleLabel { font: 18pt 'Microsoft YaHei UI'; color:#111827; }"
         "QLabel#friendRequestHintLabel { font: 11pt 'Microsoft YaHei UI'; color:#64748b; }"
         "QScrollArea#friendRequestScrollArea { background:transparent; border:none; }"

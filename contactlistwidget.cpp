@@ -10,14 +10,18 @@ ContactListWidget::ContactListWidget(QWidget *parent)
 {
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
     setMinimumHeight(0);
+    setAttribute(Qt::WA_StyledBackground, true);
     setWidget(_contentWidget);
     setWidgetResizable(false);
     setFrameShape(QFrame::NoFrame);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    viewport()->setAttribute(Qt::WA_StyledBackground, true);
+    viewport()->setStyleSheet("background:#F4F3F9;");
     _contentWidget->setAttribute(Qt::WA_StyledBackground, true);
-    _contentWidget->setStyleSheet("background:transparent;");
+    _contentWidget->setStyleSheet("background:#F4F3F9;");
+    setStyleSheet("QScrollArea { background:#F4F3F9; border:none; }");
 
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
         updateVisibleCells();

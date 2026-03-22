@@ -22,6 +22,7 @@
 #include <QTextBrowser>
 #include <QTextCursor>
 #include <QTextDocument>
+#include <QTextCharFormat>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -488,6 +489,7 @@ MessageCell::MessageCell(QWidget *parent)
     , _statusButton(new QPushButton(this))
 {
     _avatarLabel->setFixedSize(kAvatarSize, kAvatarSize);
+    _bubbleWidget->setAttribute(Qt::WA_StyledBackground, true);
 
     _textBrowser->setFrameShape(QFrame::NoFrame);
     _textBrowser->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -498,6 +500,8 @@ MessageCell::MessageCell(QWidget *parent)
     _textBrowser->document()->setDocumentMargin(0);
     _textBrowser->setStyleSheet("background:transparent; border:none; padding:0px; margin:0px;");
     _textBrowser->setContextMenuPolicy(Qt::CustomContextMenu);
+    _textBrowser->viewport()->setAttribute(Qt::WA_StyledBackground, true);
+    _textBrowser->viewport()->setStyleSheet("background:transparent;");
     _textBrowser->viewport()->setCursor(Qt::IBeamCursor);
 
     // 挂上 viewport 过滤器，随 _textBrowser 自动销毁
@@ -507,6 +511,8 @@ MessageCell::MessageCell(QWidget *parent)
             this, &MessageCell::showTextContextMenu);
 
     _imageLabel->setScaledContents(false);
+    _imageLabel->setAttribute(Qt::WA_StyledBackground, true);
+    _imageLabel->setStyleSheet("background:transparent;");
     _imageLabel->installEventFilter(this);
     _imageLabel->hide();
 
@@ -548,6 +554,15 @@ void MessageCell::setMessage(const MessageItem &message, int availableWidth)
         _textBrowser->show();
         _imageLabel->hide();
         _textBrowser->setPlainText(message.text);
+        const QColor textColor = message.outgoing ? QColor("#111827") : QColor("#1f2937");
+        _textBrowser->setStyleSheet(QStringLiteral("background:transparent; border:none; padding:0px; margin:0px; color:%1;").arg(textColor.name()));
+        QTextCursor cursor(_textBrowser->document());
+        cursor.select(QTextCursor::Document);
+        QTextCharFormat format;
+        format.setForeground(textColor);
+        cursor.mergeCharFormat(format);
+        _textBrowser->setTextCursor(cursor);
+        _textBrowser->moveCursor(QTextCursor::Start);
         const QSize textSize = textLayoutSize(message.text, maxBubbleWidth);
         bubbleWidth   = textSize.width() + 2 * kBubblePaddingH;
         contentHeight = textSize.height() + 2 * kBubblePaddingV;
