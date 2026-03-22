@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QEvent>
+#include <QFileDialog>
 #include <QFrame>
 #include <QFontMetrics>
 #include <QGuiApplication>
@@ -11,6 +12,7 @@
 #include <QHBoxLayout>
 #include <QKeyEvent>
 #include <QLabel>
+#include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -23,10 +25,12 @@
 #include <QTextCursor>
 #include <QTextDocument>
 #include <QTextCharFormat>
+#include <QPointer>
 #include <QTimer>
 #include <QVBoxLayout>
 #include <QWheelEvent>
 #include <QtMath>
+#include <QtConcurrent/QtConcurrent>
 
 namespace {
 constexpr int kAvatarSize     = 34;
@@ -284,8 +288,8 @@ public:
         auto *fitButton = new QPushButton(QStringLiteral("适应窗口"), toolbar);
         auto *actualButton = new QPushButton(QStringLiteral("100%"), toolbar);
         auto *zoomOutButton = new QPushButton(QStringLiteral("-"), toolbar);
-        auto *zoomInButton = new QPushButton(QStringLiteral("+"), toolbar);
-        auto *closeButton = new QPushButton(QStringLiteral("关闭"), toolbar);
+        auto *zoomInButton  = new QPushButton(QStringLiteral("+"), toolbar);
+        auto *saveButton   = new QPushButton(QStringLiteral("保存图片"), toolbar);
         _zoomLabel = new QLabel(toolbar);
         _zoomLabel->setMinimumWidth(56);
 
@@ -295,7 +299,7 @@ public:
         toolbarLayout->addWidget(zoomInButton);
         toolbarLayout->addWidget(_zoomLabel);
         toolbarLayout->addStretch(1);
-        toolbarLayout->addWidget(closeButton);
+        toolbarLayout->addWidget(saveButton);
         layout->addWidget(toolbar);
 
         _scrollArea->setFrameShape(QFrame::NoFrame);
@@ -340,7 +344,49 @@ public:
             _scaleFactor = qMin(8.0, _scaleFactor * 1.2);
             updateImageDisplay();
         });
-        connect(closeButton, &QPushButton::clicked, this, &QDialog::close);
+        connect(saveButton, &QPushButton::clicked, this, [this, saveButton]() {
+            const QString path = QFileDialog::getSaveFileName(
+                this,
+                QStringLiteral("保存图片"),
+                QDir::homePath() + QStringLiteral("/image.png"),
+                QStringLiteral("图片文件 (*.png *.jpg *.bmp);;PNG (*.png);;JPEG (*.jpg);;BMP (*.bmp)")
+            );
+            if (path.isEmpty()) {
+                return;
+            }
+
+            QString format = QStringLiteral("PNG");
+            if (path.endsWith(QStringLiteral(".jpg"), Qt::CaseInsensitive)
+                || path.endsWith(QStringLiteral(".jpeg"), Qt::CaseInsensitive)) {
+                format = QStringLiteral("JPEG");
+            } else if (path.endsWith(QStringLiteral(".bmp"), Qt::CaseInsensitive)) {
+                format = QStringLiteral("BMP");
+            }
+
+            // 保存期间禁用按钮，防止重复点击
+            saveButton->setEnabled(false);
+            saveButton->setText(QStringLiteral("保存中…"));
+
+            const QImage imageCopy = _sourceImage;
+            const QByteArray fmt = format.toLatin1();
+            QPointer<ImagePreviewDialog> self = this;
+            QtConcurrent::run([imageCopy, path, fmt, self, saveButton]() {
+                const bool ok = imageCopy.save(path, fmt.constData());
+                // 回到主线程更新 UI
+                QMetaObject::invokeMethod(qApp, [ok, self, saveButton]() {
+                    if (!self) {
+                        return;
+                    }
+                    saveButton->setEnabled(true);
+                    saveButton->setText(QStringLiteral("保存图片"));
+                    if (!ok) {
+                        QMessageBox::warning(self,
+                                             QStringLiteral("保存失败"),
+                                             QStringLiteral("图片保存失败，请检查路径或权限。"));
+                    }
+                }, Qt::QueuedConnection);
+            });
+        });
 
         QTimer::singleShot(0, this, [this]() { updateImageDisplay(); });
     }
