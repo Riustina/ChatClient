@@ -21,17 +21,34 @@ MessageListWidget::MessageListWidget(QWidget *parent)
     _contentWidget->setStyleSheet("background:#F4F3F9;");
     setStyleSheet("QScrollArea { background:#F4F3F9; border:none; }");
 
-    connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this]() {
+    _refreshDebounceTimer = new QTimer(this);
+    _refreshDebounceTimer->setSingleShot(true);
+    _refreshDebounceTimer->setInterval(0);
+
+    connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int newValue) {
+        qDebug() << "[valueChanged] value=" << newValue
+                 << "max=" << verticalScrollBar()->maximum()
+                 << "isNearBottom=" << isNearBottom()
+                 << "isNearTop=" << isNearTop();
         _autoFollowLatest = isNearBottom();
         if (verticalScrollBar()->maximum() > 0 && isNearTop()) {
             if (_topSignalArmed) {
                 _topSignalArmed = false;
-                emit reachedTop();
+                QMetaObject::invokeMethod(this, [this]() {
+                    emit reachedTop();
+                }, Qt::QueuedConnection);
             }
         } else {
             _topSignalArmed = true;
         }
         updateVisibleCells();
+    });
+
+    connect(_refreshDebounceTimer, &QTimer::timeout, this, [this]() {
+        if (!_pendingRefreshMessages.isEmpty()) {
+            refreshMessagesPreservePositionImmediate(_pendingRefreshMessages);
+            _pendingRefreshMessages.clear();
+        }
     });
 }
 
@@ -46,22 +63,42 @@ void MessageListWidget::setMessages(const QVector<MessageItem> &messages)
 
 void MessageListWidget::refreshMessagesPreservePosition(const QVector<MessageItem> &messages)
 {
-    const bool wasNearBottom = isNearBottom();
-    const int oldMax = verticalScrollBar()->maximum();
-    const int oldValue = verticalScrollBar()->value();
+    _pendingRefreshMessages = messages;  // 后来的覆盖前面的，只保留最新一份
+    _refreshDebounceTimer->start();      // 已经在跑就重置，同一事件循环里多次调用只触发一次
+}
 
-    _messages = messages;
-    rebuildPool();
-    recalculateLayout();
-    updateVisibleCells();
+void MessageListWidget::refreshMessagesPreservePositionImmediate(const QVector<MessageItem> &messages)
+{
+    const bool wasNearBottom = isNearBottom();
+    qDebug() << "[refresh] value=" << verticalScrollBar()->value()
+             << "max=" << verticalScrollBar()->maximum()
+             << "wasNearBottom=" << wasNearBottom;
 
     if (wasNearBottom) {
+        _messages = messages;
+        rebuildPool();
+        recalculateLayout();
+        updateVisibleCells();
         scrollToBottom();
         return;
     }
 
-    const int delta = verticalScrollBar()->maximum() - oldMax;
-    verticalScrollBar()->setValue(oldValue + qMax(0, delta));
+    const int oldMax = verticalScrollBar()->maximum();
+    const int oldBottomOffset = oldMax - verticalScrollBar()->value();
+
+    // 同样：先屏蔽，再 resize
+    viewport()->setUpdatesEnabled(false);
+    verticalScrollBar()->blockSignals(true);
+
+    _messages = messages;
+    rebuildPool();
+    recalculateLayout();
+
+    verticalScrollBar()->setValue(qMax(0, verticalScrollBar()->maximum() - oldBottomOffset));
+
+    verticalScrollBar()->blockSignals(false);
+    updateVisibleCells();
+    viewport()->setUpdatesEnabled(true);
 }
 
 void MessageListWidget::appendMessage(const MessageItem &message)
@@ -77,17 +114,44 @@ void MessageListWidget::appendMessage(const MessageItem &message)
 
 void MessageListWidget::prependMessages(const QVector<MessageItem> &messages)
 {
-    if (messages.isEmpty()) {
-        return;
+    qDebug() << "[prepend] START value=" << verticalScrollBar()->value()
+        << "max=" << verticalScrollBar()->maximum();
+    if (messages.isEmpty()) return;
+
+    const int availableWidth = viewport()->width();
+    int addedHeight = 0;
+    for (const auto &msg : messages) {
+        addedHeight += MessageCell::heightForMessage(msg, availableWidth) + 4;
     }
 
-    const int oldMax = verticalScrollBar()->maximum();
     const int oldValue = verticalScrollBar()->value();
     _messages = messages + _messages;
+
+    const int newContentHeight = [&]() {
+        int y = 4;
+        for (const auto &msg : _messages)
+            y += MessageCell::heightForMessage(msg, availableWidth) + 4;
+        return y + 4 + 1;
+    }();
+    const int newMax = qMax(0, newContentHeight - viewport()->height());
+    const int newValue = qMin(oldValue + addedHeight, newMax);
+
+    verticalScrollBar()->blockSignals(true);
+    verticalScrollBar()->setRange(0, newMax);
+    verticalScrollBar()->setValue(newValue);
+    verticalScrollBar()->blockSignals(false);
+
+    // rebuildPool();
     recalculateLayout();
     updateVisibleCells();
-    const int delta = verticalScrollBar()->maximum() - oldMax;
-    verticalScrollBar()->setValue(oldValue + qMax(0, delta));
+
+    // 修复：内容撑不满 viewport 时，maximum=0，重置 autoFollowLatest 状态
+    // 避免后续 scrollToBottom 被意外触发
+    if (newMax == 0) {
+        _autoFollowLatest = false;
+    }
+    qDebug() << "[prepend] END value=" << verticalScrollBar()->value()
+             << "max=" << verticalScrollBar()->maximum();
 }
 
 void MessageListWidget::resizeEvent(QResizeEvent *event)
@@ -122,7 +186,7 @@ void MessageListWidget::recalculateLayout()
         currentY += _heights[i] + 4;
     }
 
-    _contentWidget->resize(availableWidth, qMax(currentY + 4, viewport()->height()));
+    _contentWidget->resize(availableWidth, currentY + 4 + 1);
 }
 
 void MessageListWidget::updateVisibleCells()
@@ -168,6 +232,7 @@ bool MessageListWidget::isNearTop() const
 
 void MessageListWidget::scrollToBottom()
 {
+    qDebug() << "[scrollToBottom] called, max=" << verticalScrollBar()->maximum();
     verticalScrollBar()->setValue(verticalScrollBar()->maximum());
     _autoFollowLatest = true;
 }

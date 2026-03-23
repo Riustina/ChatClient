@@ -646,7 +646,7 @@ void MessageCell::setMessage(const MessageItem &message, int availableWidth)
     updateStatusWidget(message, bubbleX, bubbleWidth, contentHeight);
 
     const int extraHeight = (message.outgoing && message.sendState != MessageSendState::Sent) ? 18 : 0;
-    setFixedHeight(qMax(contentHeight + extraHeight, kAvatarSize) + 18);
+    // setFixedHeight(qMax(contentHeight + extraHeight, kAvatarSize) + 18);
 }
 
 int MessageCell::heightForMessage(const MessageItem &message, int availableWidth)

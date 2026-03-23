@@ -1148,7 +1148,7 @@ void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages, b
               const QVector<MessageItem> hydratedPrepended =
                   _conversations[index].messages.mid(0, prependedMessages.size());
               _messageListWidget->prependMessages(hydratedPrepended);
-          } else {
+          } else if (!prependHistory) {
               bindConversation(index);
           }
       }
@@ -1672,9 +1672,9 @@ void ChatPage::onHistoryTopReached()
         beforeMsgId);
       if (!localOlder.isEmpty()) {
           QVector<MessageItem> prepared = localOlder;
-          for (MessageItem &message : prepared) {
-              populateImageMessage(message);
-          }
+          // for (MessageItem &message : prepared) {
+          //     populateImageMessage(message);
+          // }
           conversation.messages = prepared + conversation.messages;
           hydrateConversationMessages(conversation);
           const QVector<MessageItem> hydratedPrepared =

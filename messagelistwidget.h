@@ -3,6 +3,7 @@
 
 #include <QScrollArea>
 #include <QVector>
+#include <QTimer>
 #include "chattypes.h"
 
 class MessageCell;
@@ -34,6 +35,7 @@ private:
     bool isNearBottom() const;
     void scrollToBottom();
     bool isNearTop() const;
+    void refreshMessagesPreservePositionImmediate(const QVector<MessageItem> &messages);
 
     QWidget *_contentWidget;
     QVector<MessageItem> _messages;
@@ -42,6 +44,8 @@ private:
     QVector<MessageCell *> _cellPool;
     bool _autoFollowLatest = true;
     bool _topSignalArmed = true;
+    QTimer *_refreshDebounceTimer;
+    QVector<MessageItem> _pendingRefreshMessages;
 };
 
 #endif // MESSAGELISTWIDGET_H
