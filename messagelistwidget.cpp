@@ -26,10 +26,6 @@ MessageListWidget::MessageListWidget(QWidget *parent)
     _refreshDebounceTimer->setInterval(0);
 
     connect(verticalScrollBar(), &QScrollBar::valueChanged, this, [this](int newValue) {
-        qDebug() << "[valueChanged] value=" << newValue
-                 << "max=" << verticalScrollBar()->maximum()
-                 << "isNearBottom=" << isNearBottom()
-                 << "isNearTop=" << isNearTop();
         _autoFollowLatest = isNearBottom();
         if (verticalScrollBar()->maximum() > 0 && isNearTop()) {
             if (_topSignalArmed) {
@@ -70,9 +66,6 @@ void MessageListWidget::refreshMessagesPreservePosition(const QVector<MessageIte
 void MessageListWidget::refreshMessagesPreservePositionImmediate(const QVector<MessageItem> &messages)
 {
     const bool wasNearBottom = isNearBottom();
-    qDebug() << "[refresh] value=" << verticalScrollBar()->value()
-             << "max=" << verticalScrollBar()->maximum()
-             << "wasNearBottom=" << wasNearBottom;
 
     if (wasNearBottom) {
         _messages = messages;
@@ -114,8 +107,6 @@ void MessageListWidget::appendMessage(const MessageItem &message)
 
 void MessageListWidget::prependMessages(const QVector<MessageItem> &messages)
 {
-    qDebug() << "[prepend] START value=" << verticalScrollBar()->value()
-        << "max=" << verticalScrollBar()->maximum();
     if (messages.isEmpty()) return;
 
     const int availableWidth = viewport()->width();
@@ -150,8 +141,6 @@ void MessageListWidget::prependMessages(const QVector<MessageItem> &messages)
     if (newMax == 0) {
         _autoFollowLatest = false;
     }
-    qDebug() << "[prepend] END value=" << verticalScrollBar()->value()
-             << "max=" << verticalScrollBar()->maximum();
 }
 
 void MessageListWidget::resizeEvent(QResizeEvent *event)
@@ -232,7 +221,6 @@ bool MessageListWidget::isNearTop() const
 
 void MessageListWidget::scrollToBottom()
 {
-    qDebug() << "[scrollToBottom] called, max=" << verticalScrollBar()->maximum();
     verticalScrollBar()->setValue(verticalScrollBar()->maximum());
     _autoFollowLatest = true;
 }
