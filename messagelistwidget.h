@@ -3,7 +3,6 @@
 
 #include <QScrollArea>
 #include <QVector>
-#include <QTimer>
 #include "chattypes.h"
 
 class MessageCell;
@@ -17,9 +16,12 @@ public:
     explicit MessageListWidget(QWidget *parent = nullptr);
 
     void setMessages(const QVector<MessageItem> &messages);
-    void refreshMessagesPreservePosition(const QVector<MessageItem> &messages);
     void appendMessage(const MessageItem &message);
     void prependMessages(const QVector<MessageItem> &messages);
+    // 图片加载完成后调用。同时传入已填好 image 的 MessageItem，
+    // list widget 先同步内部拷贝，再做局部高度修正和 scroll 补偿。
+    void notifyMessageHeightChanged(int modelIndex, const MessageItem &updated);
+    void checkIfReachedTop();
 
 signals:
     void retryRequested(const QString &clientMsgId);
@@ -35,7 +37,6 @@ private:
     bool isNearBottom() const;
     void scrollToBottom();
     bool isNearTop() const;
-    void refreshMessagesPreservePositionImmediate(const QVector<MessageItem> &messages);
 
     QWidget *_contentWidget;
     QVector<MessageItem> _messages;
@@ -44,8 +45,6 @@ private:
     QVector<MessageCell *> _cellPool;
     bool _autoFollowLatest = true;
     bool _topSignalArmed = true;
-    QTimer *_refreshDebounceTimer;
-    QVector<MessageItem> _pendingRefreshMessages;
 };
 
 #endif // MESSAGELISTWIDGET_H

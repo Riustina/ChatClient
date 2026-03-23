@@ -1144,14 +1144,20 @@ void ChatPage::applyPrivateMessages(int contactId, const QJsonArray &messages, b
     syncContactList();
     updateChatUnreadNotification();
       if (_currentConversation == index) {
-          if (prependHistory && !prependedMessages.isEmpty()) {
-              const QVector<MessageItem> hydratedPrepended =
-                  _conversations[index].messages.mid(0, prependedMessages.size());
-              _messageListWidget->prependMessages(hydratedPrepended);
-          } else if (!prependHistory) {
-              bindConversation(index);
-          }
-      }
+        if (prependHistory && !prependedMessages.isEmpty()) {
+            QVector<MessageItem> hydratedPrepended =
+                _conversations[index].messages.mid(0, prependedMessages.size());
+            loadImagesSync(hydratedPrepended);
+            // 同步回写，让 _conversations 里的拷贝也持有已加载的图片，
+            // 避免后续 notifyMessageHeightChanged 再次触发高度变化
+            for (int k = 0; k < hydratedPrepended.size(); ++k) {
+                _conversations[index].messages[k] = hydratedPrepended[k];
+            }
+            _messageListWidget->prependMessages(hydratedPrepended);
+            } else if (!prependHistory) {
+                bindConversation(index);
+            }
+        }
 }
 
 void ChatPage::appendPrivateMessage(const QJsonObject &obj, bool moveToTop)
@@ -1670,21 +1676,23 @@ void ChatPage::onHistoryTopReached()
         _currentUserId,
         10,
         beforeMsgId);
-      if (!localOlder.isEmpty()) {
-          QVector<MessageItem> prepared = localOlder;
-          // for (MessageItem &message : prepared) {
-          //     populateImageMessage(message);
-          // }
-          conversation.messages = prepared + conversation.messages;
-          hydrateConversationMessages(conversation);
-          const QVector<MessageItem> hydratedPrepared =
-              conversation.messages.mid(0, prepared.size());
-          _messageListWidget->prependMessages(hydratedPrepared);
-          if (prepared.size() < 10) {
-              conversation.hasMoreHistory = false;
-          }
-          return;
-      }
+    if (!localOlder.isEmpty()) {
+        // 先不加载图片，直接 prepend（图片为空会显示占位符）
+        conversation.messages = localOlder + conversation.messages;
+        hydrateConversationMessages(conversation);
+        QVector<MessageItem> prepended = conversation.messages.mid(0, localOlder.size());
+        _messageListWidget->prependMessages(prepended); // 立即展示，不卡 UI
+
+        if (localOlder.size() < 10) conversation.hasMoreHistory = false;
+
+        // 图片懒加载：逐条异步
+        for (int k = 0; k < prepended.size(); ++k) {
+            if (prepended[k].type == ChatMessageType::Image) {
+                ensureImageAvailable(conversation.messages[k]); // 已有异步加载路径
+            }
+        }
+        return;
+    }
 
     conversation.loadingHistory = true;
     requestOlderPrivateMessages(conversation.contact.id, beforeMsgId, 10);
@@ -1792,6 +1800,26 @@ void ChatPage::ensureImageAvailable(MessageItem &item)
     }
 
     requestImageDownload(resourceKey);
+}
+
+void ChatPage::loadImagesSync(QVector<MessageItem> &messages)
+{
+    for (MessageItem &msg : messages) {
+        if (msg.type != ChatMessageType::Image || !msg.image.isNull() || msg.text.isEmpty()) {
+            continue;
+        }
+        const QString localPath = localImageCachePath(msg.text);
+        if (localPath.isEmpty()) {
+            continue;
+        }
+        const QImageReader reader(localPath);
+        if (!reader.canRead()) {
+            continue;
+        }
+        // 同步读取，直接填入 image 字段
+        // 因为是历史消息批量加载，文件已在磁盘，IO 很快，不会阻塞 UI
+        msg.image = QImage(localPath);
+    }
 }
 
 void ChatPage::cachePendingImage(const QString &clientMsgId, const QString &resourceKey)
@@ -1945,57 +1973,55 @@ void ChatPage::applyLoadedImageResource(const QString &resourceKey, const QImage
         return;
     }
 
-    bool currentConversationChanged = false;
     for (int i = 0; i < _conversations.size(); ++i) {
-        bool conversationChanged = false;
-        for (MessageItem &message : _conversations[i].messages) {
-            if (message.type != ChatMessageType::Image) {
+        QVector<MessageItem> &messages = _conversations[i].messages;
+        for (int j = 0; j < messages.size(); ++j) {
+            MessageItem &msg = messages[j];
+            if (msg.type != ChatMessageType::Image) {
                 continue;
             }
-            if (normalizeImageResourceKey(message.text) != normalized) {
+            if (normalizeImageResourceKey(msg.text) != normalized) {
                 continue;
             }
-            message.image = image;
-            conversationChanged = true;
+            msg.image = image;
             if (i == _currentConversation) {
-                currentConversationChanged = true;
+                // 把已写好 image 的 msg 整个传进去，
+                // list widget 先同步内部拷贝再做局部高度修正。
+                _messageListWidget->notifyMessageHeightChanged(j, msg);
             }
         }
-    }
-
-    if (currentConversationChanged) {
-        _messageListWidget->refreshMessagesPreservePosition(
-            _conversations[_currentConversation].messages);
     }
 }
 
 void ChatPage::refreshImageResource(const QString &resourceKey)
 {
     const QString normalized = normalizeImageResourceKey(resourceKey);
-    bool changed = false;
-    for (Conversation &conversation : _conversations) {
-        for (MessageItem &message : conversation.messages) {
-            if (message.type != ChatMessageType::Image) {
-                continue;
-            }
-            if (normalizeImageResourceKey(message.text) != normalized) {
-                continue;
-            }
+    if (normalized.isEmpty()) {
+        return;
+    }
 
+    for (int i = 0; i < _conversations.size(); ++i) {
+        QVector<MessageItem> &messages = _conversations[i].messages;
+        for (int j = 0; j < messages.size(); ++j) {
+            MessageItem &msg = messages[j];
+            if (msg.type != ChatMessageType::Image) {
+                continue;
+            }
+            if (normalizeImageResourceKey(msg.text) != normalized) {
+                continue;
+            }
             const QString cachePath = localImageCachePath(normalized);
             if (cachePath.isEmpty()) {
                 continue;
             }
-            const QImage image(cachePath);
-            if (image.isNull()) {
+            const QImage loadedImage(cachePath);
+            if (loadedImage.isNull()) {
                 continue;
             }
-            message.image = image;
-            changed = true;
+            msg.image = loadedImage;
+            if (i == _currentConversation) {
+                _messageListWidget->notifyMessageHeightChanged(j, msg);
+            }
         }
-    }
-
-    if (changed && _currentConversation >= 0 && _currentConversation < _conversations.size()) {
-        _messageListWidget->refreshMessagesPreservePosition(_conversations[_currentConversation].messages);
     }
 }

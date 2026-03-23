@@ -143,6 +143,7 @@ private:
     void requestImageDownload(const QString &resourceKey);
     void onImageDownloadFinished(QNetworkReply *reply);
     void refreshImageResource(const QString &resourceKey);
+    void loadImagesSync(QVector<MessageItem> &messages);
 
     Ui::ChatPage *ui;
     ContactListWidget *_contactListWidget;
